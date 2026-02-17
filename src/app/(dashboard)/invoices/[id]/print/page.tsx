@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { PrintToolbar } from "@/components/invoices/print-toolbar";
-import { prisma } from "@/lib/prisma";
+import { getInvoiceById } from "@/lib/appsync/invoices";
+import { requireAuth } from "@/lib/require-auth";
 
 export default async function InvoicePrintPage({
   params,
@@ -10,31 +11,25 @@ export default async function InvoicePrintPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  await requireAuth();
 
-  const invoice = await prisma.invoice.findUnique({
-    where: { id },
-    include: {
-      sections: {
-        orderBy: { position: "asc" },
-        include: {
-          lineItems: {
-            orderBy: { position: "asc" },
-          },
-        },
-      },
-    },
-  });
+  const invoice = await getInvoiceById(id);
 
   if (!invoice) {
     notFound();
   }
 
   return (
-    <main className="min-h-screen bg-muted/20 p-4 md:p-8">
-      <PrintToolbar invoiceId={invoice.id} />
-      <InvoicePreview invoice={invoice} />
+    <main className="brand-page-bg min-h-screen p-4 md:p-8">
+      <PrintToolbar invoiceId={invoice.invoiceId} />
+      <InvoicePreview invoice={invoice} variant="template361" />
 
       <style>{`
+        @page {
+          size: Letter;
+          margin: 0.35in 0.25in 0.5in;
+        }
+
         @media print {
           body {
             background: white;

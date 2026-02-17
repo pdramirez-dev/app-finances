@@ -151,9 +151,9 @@ export function InvoiceForm({
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="sections" value={JSON.stringify(sectionsPayload)} />
 
-      <Card>
+      <Card className="brand-surface">
         <CardHeader>
-          <CardTitle>Datos principales</CardTitle>
+          <CardTitle className="brand-heading text-xl">Datos principales</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -187,10 +187,10 @@ export function InvoiceForm({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="brand-surface">
         <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <CardTitle>Secciones de Crew</CardTitle>
-          <Button type="button" variant="secondary" onClick={addSection}>
+          <CardTitle className="brand-heading text-xl">Secciones de Crew</CardTitle>
+          <Button type="button" variant="secondary" className="bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={addSection}>
             Add Section
           </Button>
         </CardHeader>
@@ -202,7 +202,10 @@ export function InvoiceForm({
             );
 
             return (
-              <div key={`${sectionIndex}-${section.title}`} className="space-y-4 rounded-lg border p-4">
+              <div
+                key={`${sectionIndex}-${section.title}`}
+                className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4"
+              >
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="min-w-60 flex-1 space-y-2">
                     <Label>Section Title</Label>
@@ -217,6 +220,7 @@ export function InvoiceForm({
                     type="button"
                     variant="outline"
                     size="icon"
+                    className="border-slate-300 bg-white hover:bg-slate-100"
                     onClick={() => removeSection(sectionIndex)}
                     disabled={sections.length === 1}
                     aria-label="Remove section"
@@ -227,7 +231,10 @@ export function InvoiceForm({
 
                 <div className="space-y-3">
                   {section.items.map((item, itemIndex) => (
-                    <div key={`${sectionIndex}-${itemIndex}`} className="grid gap-3 rounded-md border p-3 md:grid-cols-12">
+                    <div
+                      key={`${sectionIndex}-${itemIndex}`}
+                      className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 md:grid-cols-12"
+                    >
                       <div className="space-y-2 md:col-span-6">
                         <Label>Description</Label>
                         <Input
@@ -265,6 +272,7 @@ export function InvoiceForm({
                           type="button"
                           variant="outline"
                           size="icon"
+                          className="border-slate-300 bg-white hover:bg-slate-100"
                           onClick={() => removeItem(sectionIndex, itemIndex)}
                           disabled={section.items.length === 1}
                           aria-label="Remove item"
@@ -277,7 +285,12 @@ export function InvoiceForm({
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <Button type="button" variant="outline" onClick={() => addItem(sectionIndex)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-slate-300 bg-white hover:bg-slate-100"
+                    onClick={() => addItem(sectionIndex)}
+                  >
                     Add Line Item
                   </Button>
                   <p className="text-sm font-medium">Section Total: {formatMoney(sectionTotal)}</p>
@@ -287,12 +300,17 @@ export function InvoiceForm({
           })}
 
           <Separator />
-          <p className="text-right text-lg font-semibold">Grand Total: {formatMoney(grandTotal)}</p>
+          <p className="brand-heading text-right text-xl text-slate-900">Grand Total: {formatMoney(grandTotal)}</p>
 
-          {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+          {state.error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm font-medium text-red-700">No se pudo crear el invoice</p>
+              <p className="mt-1 text-sm text-red-600">{state.error}</p>
+            </div>
+          ) : null}
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" className="bg-[#0a1226] text-white hover:bg-[#162448]" disabled={isPending}>
               {isPending ? "Creating..." : "Create Invoice"}
             </Button>
           </div>

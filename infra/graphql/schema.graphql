@@ -1,0 +1,105 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+}
+
+type Query {
+  getInvoice(invoiceId: ID!): Invoice
+  getInvoiceByNumber(invoiceNumber: Int!): Invoice
+  listInvoices(status: InvoiceStatus, limit: Int, nextToken: String): InvoiceConnection!
+}
+
+type Mutation {
+  putInvoice(input: PutInvoiceInput!): Invoice!
+  putInvoiceSection(input: PutInvoiceSectionInput!): InvoiceSection!
+  putInvoiceLineItem(input: PutInvoiceLineItemInput!): InvoiceLineItem!
+  deleteInvoiceSection(invoiceId: ID!, sectionId: ID!): Boolean!
+  deleteInvoiceLineItem(sectionId: ID!, lineItemId: ID!): Boolean!
+  updateInvoiceStatus(invoiceId: ID!, status: InvoiceStatus!): Invoice!
+  deleteInvoice(invoiceId: ID!): Boolean!
+  requestInvoicePdf(invoiceId: ID!): PdfRequestResult!
+}
+
+type InvoiceConnection {
+  items: [Invoice!]!
+  nextToken: String
+}
+
+type Invoice {
+  invoiceId: ID!
+  invoiceNumber: Int!
+  date: AWSDate!
+  weekNumber: Int!
+  billToName: String!
+  billToAddress: String!
+  project: String!
+  currency: String!
+  notes: String
+  grandTotal: Float!
+  status: InvoiceStatus!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+  sections: [InvoiceSection!]!
+}
+
+type InvoiceSection {
+  invoiceId: ID!
+  sectionId: ID!
+  title: String!
+  position: Int!
+  total: Float!
+  lineItems: [InvoiceLineItem!]!
+}
+
+type InvoiceLineItem {
+  sectionId: ID!
+  lineItemId: ID!
+  description: String!
+  quantity: Float!
+  amount: Float!
+  position: Int!
+}
+
+type PdfRequestResult {
+  accepted: Boolean!
+  invoiceId: ID!
+  message: String!
+}
+
+input PutInvoiceInput {
+  invoiceId: ID
+  invoiceNumber: Int!
+  date: AWSDate!
+  weekNumber: Int!
+  billToName: String!
+  billToAddress: String!
+  project: String!
+  currency: String
+  notes: String
+  grandTotal: Float!
+  status: InvoiceStatus
+  createdAt: AWSDateTime
+}
+
+input PutInvoiceSectionInput {
+  invoiceId: ID!
+  sectionId: ID
+  title: String!
+  position: Int!
+  total: Float!
+}
+
+input PutInvoiceLineItemInput {
+  sectionId: ID!
+  lineItemId: ID
+  description: String!
+  quantity: Float!
+  amount: Float!
+  position: Int!
+}

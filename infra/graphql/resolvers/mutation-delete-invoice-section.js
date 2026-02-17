@@ -1,0 +1,19 @@
+import { util } from '@aws-appsync/utils';
+
+export function request(ctx) {
+  return {
+    operation: 'DeleteItem',
+    key: util.dynamodb.toMapValues({
+      invoiceId: ctx.args.invoiceId,
+      sectionId: ctx.args.sectionId,
+    }),
+  };
+}
+
+export function response(ctx) {
+  if (ctx.error) {
+    util.error(ctx.error.message, ctx.error.type);
+  }
+
+  return true;
+}

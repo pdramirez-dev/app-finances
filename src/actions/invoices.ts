@@ -1,12 +1,23 @@
 "use server";
 
-import { InvoiceStatus } from "@prisma/client";
+import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import {
+  deleteInvoice,
+  deleteInvoiceLineItem,
+  deleteInvoiceSection,
+  getInvoiceById,
+  getInvoiceByNumber,
+  putInvoice,
+  putInvoiceLineItem,
+  putInvoiceSection,
+  updateInvoiceStatus,
+} from "@/lib/appsync/invoices";
+import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { calculateGrandTotal, calculateSectionTotal } from "@/lib/invoices";
-import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/require-auth";
 import { createInvoiceInputSchema, invoiceSectionsInputSchema } from "@/lib/validations";
 
@@ -61,50 +72,49 @@ export async function createInvoiceAction(
   }
 
   const payload = payloadResult.data;
-
-  const duplicateInvoice = await prisma.invoice.findUnique({
-    where: { invoiceNumber: payload.invoiceNumber },
-    select: { id: true },
-  });
+  const duplicateInvoice = await getInvoiceByNumber(payload.invoiceNumber);
 
   if (duplicateInvoice) {
     return { error: "Invoice number already exists" };
   }
 
   const grandTotal = calculateGrandTotal(payload.sections);
-
-  const createdInvoice = await prisma.invoice.create({
-    data: {
-      invoiceNumber: payload.invoiceNumber,
-      date: payload.date,
-      weekNumber: payload.weekNumber,
-      billToName: payload.billToName,
-      billToAddress: payload.billToAddress,
-      project: payload.project,
-      notes: payload.notes,
-      grandTotal,
-      sections: {
-        create: payload.sections.map((section, sectionIndex) => ({
-          title: section.title,
-          position: sectionIndex,
-          total: calculateSectionTotal(section),
-          lineItems: {
-            create: section.items.map((item, itemIndex) => ({
-              description: item.description,
-              quantity: item.quantity,
-              amount: item.amount,
-              position: itemIndex,
-            })),
-          },
-        })),
-      },
-    },
-    select: { id: true },
+  const createdInvoice = await putInvoice({
+    invoiceNumber: payload.invoiceNumber,
+    date: format(payload.date, "yyyy-MM-dd"),
+    weekNumber: payload.weekNumber,
+    billToName: payload.billToName,
+    billToAddress: payload.billToAddress,
+    project: payload.project,
+    notes: payload.notes,
+    grandTotal,
+    status: "DRAFT",
   });
 
+  for (const [sectionIndex, section] of payload.sections.entries()) {
+    const createdSection = await putInvoiceSection({
+      invoiceId: createdInvoice.invoiceId,
+      title: section.title,
+      position: sectionIndex,
+      total: calculateSectionTotal(section),
+    });
+
+    for (const [itemIndex, item] of section.items.entries()) {
+      await putInvoiceLineItem({
+        sectionId: createdSection.sectionId,
+        description: item.description,
+        quantity: item.quantity,
+        amount: item.amount,
+        position: itemIndex,
+      });
+    }
+  }
+
   revalidatePath("/invoices");
-  redirect(`/invoices/${createdInvoice.id}`);
+  redirect(`/invoices/${createdInvoice.invoiceId}`);
 }
+
+const invoiceStatusSchema = z.enum(INVOICE_STATUSES);
 
 export async function updateInvoiceStatusAction(formData: FormData) {
   await requireAuth();
@@ -112,7 +122,7 @@ export async function updateInvoiceStatusAction(formData: FormData) {
   const result = z
     .object({
       invoiceId: z.string().min(1),
-      status: z.nativeEnum(InvoiceStatus),
+      status: invoiceStatusSchema,
     })
     .safeParse({
       invoiceId: formData.get("invoiceId"),
@@ -123,10 +133,7 @@ export async function updateInvoiceStatusAction(formData: FormData) {
     return;
   }
 
-  await prisma.invoice.update({
-    where: { id: result.data.invoiceId },
-    data: { status: result.data.status },
-  });
+  await updateInvoiceStatus(result.data.invoiceId, result.data.status);
 
   revalidatePath(`/invoices/${result.data.invoiceId}`);
   revalidatePath("/invoices");
@@ -141,9 +148,18 @@ export async function deleteInvoiceAction(formData: FormData) {
     return;
   }
 
-  await prisma.invoice.delete({
-    where: { id: invoiceId },
-  });
+  const invoice = await getInvoiceById(invoiceId);
+
+  if (invoice) {
+    for (const section of invoice.sections) {
+      await Promise.all(
+        section.lineItems.map((lineItem) => deleteInvoiceLineItem(section.sectionId, lineItem.lineItemId)),
+      );
+      await deleteInvoiceSection(invoiceId, section.sectionId);
+    }
+  }
+
+  await deleteInvoice(invoiceId);
 
   revalidatePath("/invoices");
   redirect("/invoices");

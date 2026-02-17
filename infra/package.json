@@ -1,0 +1,24 @@
+{
+  "name": "app-finances-infra",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "cdk:bootstrap": "cdk bootstrap",
+    "cdk:synth": "cdk synth",
+    "cdk:diff": "cdk diff",
+    "cdk:deploy": "cdk deploy --all",
+    "cdk:deploy:dev": "cdk deploy AppFinances-Backend-dev AppFinances-Frontend-dev -c stages=dev",
+    "cdk:deploy:prod": "cdk deploy AppFinances-Backend-prod AppFinances-Frontend-prod -c stages=prod"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/node": "^20.19.17",
+    "aws-cdk": "^2.1027.0",
+    "aws-cdk-lib": "^2.220.0",
+    "constructs": "^10.4.2",
+    "esbuild": "^0.25.10",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.2"
+  }
+}

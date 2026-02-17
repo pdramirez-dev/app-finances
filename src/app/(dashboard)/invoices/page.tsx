@@ -1,92 +1,41 @@
 import Link from "next/link";
-import { format } from "date-fns";
+import { Sparkles } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { InvoiceListTable } from "@/components/invoices/invoice-list-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatMoney } from "@/lib/invoices";
-import { prisma } from "@/lib/prisma";
-
-const statusClassMap: Record<string, string> = {
-  DRAFT: "bg-amber-100 text-amber-900 hover:bg-amber-100",
-  SENT: "bg-blue-100 text-blue-900 hover:bg-blue-100",
-  PAID: "bg-emerald-100 text-emerald-900 hover:bg-emerald-100",
-};
+import { listInvoices } from "@/lib/appsync/invoices";
+import { requireAuth } from "@/lib/require-auth";
 
 export default async function InvoiceListPage() {
-  const invoices = await prisma.invoice.findMany({
-    orderBy: { invoiceNumber: "desc" },
-    select: {
-      id: true,
-      invoiceNumber: true,
-      billToName: true,
-      date: true,
-      status: true,
-      grandTotal: true,
-    },
-  });
+  await requireAuth();
+  const invoices = await listInvoices();
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="brand-chip border-white/25 bg-white/10 text-slate-100">
+            <Sparkles className="size-3.5 text-cyan-300" />
+            Invoice Workspace
+          </p>
+          <h1 className="brand-heading mt-3 text-3xl text-white">Invoices</h1>
+          <p className="mt-1 text-sm text-slate-200">
             Gestión inicial de invoices para el MVP.
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="bg-white text-slate-900 hover:bg-slate-100">
           <Link href="/invoices/new">New Invoice</Link>
         </Button>
       </div>
 
-      <Card>
+      <Card className="brand-surface">
         <CardHeader>
-          <CardTitle>Listado</CardTitle>
+          <CardTitle className="brand-heading text-xl">Listado</CardTitle>
           <CardDescription>{invoices.length} registros</CardDescription>
         </CardHeader>
         <CardContent>
-          {invoices.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Aún no hay invoices. Crea el primero para comenzar.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Bill To</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Grand Total</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                      <TableCell>{format(invoice.date, "MM/dd/yyyy")}</TableCell>
-                      <TableCell>{invoice.billToName}</TableCell>
-                      <TableCell>
-                        <Badge className={statusClassMap[invoice.status]}>{invoice.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatMoney(invoice.grandTotal)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={`/invoices/${invoice.id}`}>View</Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <InvoiceListTable invoices={invoices} />
         </CardContent>
       </Card>
     </div>
