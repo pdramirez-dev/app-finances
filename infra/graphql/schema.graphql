@@ -9,10 +9,19 @@ enum InvoiceStatus {
   PAID
 }
 
+enum AccountType {
+  SELF_EMPLOYED
+  COMPANY
+}
+
 type Query {
   getInvoice(invoiceId: ID!): Invoice
   getInvoiceByNumber(invoiceNumber: Int!): Invoice
   listInvoices(status: InvoiceStatus, limit: Int, nextToken: String): InvoiceConnection!
+  getAccount(accountId: ID!): Account
+  listClients(accountId: ID!, limit: Int, nextToken: String): ClientConnection!
+  getClient(accountId: ID!, clientId: ID!): Client
+  getBankAccount(accountId: ID!, bankAccountId: ID!): BankAccount
 }
 
 type Mutation {
@@ -24,10 +33,19 @@ type Mutation {
   updateInvoiceStatus(invoiceId: ID!, status: InvoiceStatus!): Invoice!
   deleteInvoice(invoiceId: ID!): Boolean!
   requestInvoicePdf(invoiceId: ID!): PdfRequestResult!
+  putAccount(input: PutAccountInput!): Account!
+  putClient(input: PutClientInput!): Client!
+  deleteClient(accountId: ID!, clientId: ID!): Boolean!
+  putBankAccount(input: PutBankAccountInput!): BankAccount!
 }
 
 type InvoiceConnection {
   items: [Invoice!]!
+  nextToken: String
+}
+
+type ClientConnection {
+  items: [Client!]!
   nextToken: String
 }
 
@@ -72,6 +90,46 @@ type PdfRequestResult {
   message: String!
 }
 
+type Account {
+  accountId: ID!
+  type: AccountType!
+  displayName: String!
+  legalName: String
+  taxId: String
+  email: AWSEmail
+  phone: AWSPhone
+  address: String
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type Client {
+  accountId: ID!
+  clientId: ID!
+  name: String!
+  email: AWSEmail
+  phone: AWSPhone
+  address: String
+  taxId: String
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type BankAccount {
+  accountId: ID!
+  bankAccountId: ID!
+  beneficiaryName: String!
+  bankName: String!
+  accountNumberMasked: String
+  routingNumberMasked: String
+  ibanMasked: String
+  swiftCode: String
+  currency: String!
+  country: String
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
 input PutInvoiceInput {
   invoiceId: ID
   invoiceNumber: Int!
@@ -102,4 +160,38 @@ input PutInvoiceLineItemInput {
   quantity: Float!
   amount: Float!
   position: Int!
+}
+
+input PutAccountInput {
+  accountId: ID
+  type: AccountType!
+  displayName: String!
+  legalName: String
+  taxId: String
+  email: AWSEmail
+  phone: AWSPhone
+  address: String
+}
+
+input PutClientInput {
+  accountId: ID!
+  clientId: ID
+  name: String!
+  email: AWSEmail
+  phone: AWSPhone
+  address: String
+  taxId: String
+}
+
+input PutBankAccountInput {
+  accountId: ID!
+  bankAccountId: ID
+  beneficiaryName: String!
+  bankName: String!
+  accountNumberMasked: String
+  routingNumberMasked: String
+  ibanMasked: String
+  swiftCode: String
+  currency: String!
+  country: String
 }

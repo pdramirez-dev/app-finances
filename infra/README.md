@@ -7,7 +7,7 @@ Infra de `app-finances` con separación frontend/backend por entorno.
 - `AppFinances-Backend-<stage>`
   - Cognito (User Pool + App Client + Hosted UI domain)
   - AppSync (GraphQL)
-  - DynamoDB multi-tabla
+  - DynamoDB multi-tabla (invoices + accounts + memberships + clients + bank-accounts)
   - S3 para PDFs
   - Lambda de generación PDF
 - `AppFinances-Frontend-<stage>`

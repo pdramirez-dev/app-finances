@@ -11,6 +11,13 @@ App web para generar y administrar invoices.
 - S3 (PDFs)
 - CDK para infraestructura (`infra/`)
 
+## Documentación de arquitectura y roadmap
+
+- Arquitectura objetivo multi-tenant: `docs/ARCHITECTURE.md`
+- Changelog del proyecto: `CHANGELOG.md`
+- Backlog backend: `docs/TASKS_BACKEND.md`
+- Backlog frontend: `docs/TASKS_FRONTEND.md`
+
 ## Funcionalidades
 
 - Login protegido (`/login`) con Cognito
