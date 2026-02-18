@@ -33,10 +33,8 @@ export class AppFinancesFrontendStack extends cdk.Stack {
         { name: "APPSYNC_GRAPHQL_URL", value: props.backend.graphqlUrl },
         { name: "AUTH_SECRET", value: props.authSecret ?? "replace-me-in-amplify" },
         { name: "AUTH_URL", value: props.appUrl },
-        { name: "AUTH_COGNITO_ID", value: props.backend.userPoolClientId },
-        { name: "AUTH_COGNITO_ISSUER", value: props.backend.cognitoIssuer },
-        { name: "COGNITO_USER_POOL_ID", value: props.backend.userPoolId },
-        { name: "COGNITO_USER_POOL_CLIENT_ID", value: props.backend.userPoolClientId },
+        { name: "AUTH_COGNITO_USER_POOL_ID", value: props.backend.userPoolId },
+        { name: "AUTH_COGNITO_USER_POOL_CLIENT_ID", value: props.backend.userPoolClientId },
         { name: "COGNITO_HOSTED_UI_DOMAIN", value: props.backend.cognitoHostedUiDomain },
       ],
     });

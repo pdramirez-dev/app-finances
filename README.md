@@ -28,9 +28,9 @@ Copiar `.env.example` a `.env` y completar valores:
 AUTH_SECRET="replace_with_a_strong_random_secret"
 AUTH_URL="http://localhost:3000"
 
-AUTH_COGNITO_ID="replace_with_user_pool_client_id"
+AUTH_COGNITO_USER_POOL_ID="us-east-1_XXXXXXXXX"
+AUTH_COGNITO_USER_POOL_CLIENT_ID="replace_with_user_pool_client_id"
 AUTH_COGNITO_SECRET=""
-AUTH_COGNITO_ISSUER="https://cognito-idp.us-east-1.amazonaws.com/<user-pool-id>"
 
 APPSYNC_GRAPHQL_URL="https://<appsync-id>.appsync-api.us-east-1.amazonaws.com/graphql"
 ```

@@ -1,7 +1,22 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { decode as decodeJwt } from "next-auth/jwt";
+import { createHmac } from "node:crypto";
 import { z } from "zod";
+
+function resolveAuthSecret() {
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return "dev-only-auth-secret-change-me";
+  }
+
+  throw new Error("Missing required environment variable: AUTH_SECRET (or NEXTAUTH_SECRET)");
+}
 
 function requiredEnv(name: string) {
   const value = process.env[name];
@@ -18,14 +33,44 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
-function cognitoRegionFromIssuer(issuer: string) {
-  const match = issuer.match(/^https:\/\/cognito-idp\.([a-z0-9-]+)\.amazonaws\.com\/.+$/);
+function cognitoRegionFromUserPoolId(userPoolId: string) {
+  const match = userPoolId.match(/^([a-z0-9-]+)_[A-Za-z0-9-]+$/);
 
   if (!match?.[1]) {
-    throw new Error("AUTH_COGNITO_ISSUER is invalid");
+    throw new Error("AUTH_COGNITO_USER_POOL_ID is invalid");
   }
 
   return match[1];
+}
+
+function resolveCognitoRegion() {
+  return cognitoRegionFromUserPoolId(requiredEnv("AUTH_COGNITO_USER_POOL_ID"));
+}
+
+function resolveCognitoClientId() {
+  return requiredEnv("AUTH_COGNITO_USER_POOL_CLIENT_ID");
+}
+
+function resolveCognitoClientSecret() {
+  const secret = process.env.AUTH_COGNITO_SECRET;
+
+  if (!secret) {
+    return null;
+  }
+
+  return secret;
+}
+
+function buildCognitoSecretHash({
+  username,
+  clientId,
+  clientSecret,
+}: {
+  username: string;
+  clientId: string;
+  clientSecret: string;
+}) {
+  return createHmac("sha256", clientSecret).update(`${username}${clientId}`).digest("base64");
 }
 
 function decodeTokenPayload(token: string) {
@@ -45,9 +90,22 @@ function decodeTokenPayload(token: string) {
 }
 
 async function authenticateWithCognito(email: string, password: string) {
-  const issuer = requiredEnv("AUTH_COGNITO_ISSUER");
-  const region = cognitoRegionFromIssuer(issuer);
+  const region = resolveCognitoRegion();
+  const clientId = resolveCognitoClientId();
+  const clientSecret = resolveCognitoClientSecret();
   const endpoint = `https://cognito-idp.${region}.amazonaws.com/`;
+  const authParameters: Record<string, string> = {
+    USERNAME: email,
+    PASSWORD: password,
+  };
+
+  if (clientSecret) {
+    authParameters.SECRET_HASH = buildCognitoSecretHash({
+      username: email,
+      clientId,
+      clientSecret,
+    });
+  }
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -58,16 +116,25 @@ async function authenticateWithCognito(email: string, password: string) {
     cache: "no-store",
     body: JSON.stringify({
       AuthFlow: "USER_PASSWORD_AUTH",
-      ClientId: requiredEnv("AUTH_COGNITO_ID"),
-      AuthParameters: {
-        USERNAME: email,
-        PASSWORD: password,
-      },
+      ClientId: clientId,
+      AuthParameters: authParameters,
     }),
   });
 
   if (!response.ok) {
-    return null;
+    const cognitoError = (await response.json().catch(() => null)) as
+      | { message?: string; __type?: string }
+      | null;
+
+    if (cognitoError?.message?.toLowerCase().includes("secret hash")) {
+      throw new Error(
+        "Cognito rejected the request due to SECRET_HASH. Configure AUTH_COGNITO_SECRET with the app client secret from AWS Cognito.",
+      );
+    }
+
+    const type = cognitoError?.__type ? `${cognitoError.__type}: ` : "";
+    const message = cognitoError?.message ?? "Unknown Cognito error";
+    throw new Error(`Cognito InitiateAuth failed (${response.status}): ${type}${message}`);
   }
 
   const payload = (await response.json()) as {
@@ -102,6 +169,7 @@ async function authenticateWithCognito(email: string, password: string) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: resolveAuthSecret(),
   trustHost: true,
   pages: {
     signIn: "/login",

@@ -197,10 +197,9 @@ fi
 echo "Leyendo outputs de CloudFormation..."
 USER_POOL_ID="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue | [0]" --output text)"
 USER_POOL_CLIENT_ID="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue | [0]" --output text)"
-COGNITO_ISSUER="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='CognitoIssuer'].OutputValue | [0]" --output text)"
 APPSYNC_URL="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='AppSyncGraphqlUrl'].OutputValue | [0]" --output text)"
 
-if [[ "$USER_POOL_ID" == "None" || "$USER_POOL_CLIENT_ID" == "None" || "$COGNITO_ISSUER" == "None" || "$APPSYNC_URL" == "None" ]]; then
+if [[ "$USER_POOL_ID" == "None" || "$USER_POOL_CLIENT_ID" == "None" || "$APPSYNC_URL" == "None" ]]; then
   echo "Error: no se pudieron resolver todos los outputs del stack $STACK_NAME." >&2
   exit 1
 fi
@@ -212,9 +211,9 @@ fi
 echo "Actualizando $ENV_FILE..."
 upsert_env "$ENV_FILE" "AUTH_SECRET" "$AUTH_SECRET"
 upsert_env "$ENV_FILE" "AUTH_URL" "$AUTH_URL"
-upsert_env "$ENV_FILE" "AUTH_COGNITO_ID" "$USER_POOL_CLIENT_ID"
+upsert_env "$ENV_FILE" "AUTH_COGNITO_USER_POOL_ID" "$USER_POOL_ID"
+upsert_env "$ENV_FILE" "AUTH_COGNITO_USER_POOL_CLIENT_ID" "$USER_POOL_CLIENT_ID"
 upsert_env "$ENV_FILE" "AUTH_COGNITO_SECRET" ""
-upsert_env "$ENV_FILE" "AUTH_COGNITO_ISSUER" "$COGNITO_ISSUER"
 upsert_env "$ENV_FILE" "APPSYNC_GRAPHQL_URL" "$APPSYNC_URL"
 
 echo "Creando/actualizando usuario admin en Cognito..."
@@ -241,7 +240,6 @@ echo "Bootstrap dev completado."
 echo "Stack: $STACK_NAME"
 echo "UserPoolId: $USER_POOL_ID"
 echo "UserPoolClientId: $USER_POOL_CLIENT_ID"
-echo "CognitoIssuer: $COGNITO_ISSUER"
 echo "AppSyncGraphqlUrl: $APPSYNC_URL"
 echo
 echo "Siguiente paso: npm run dev"
