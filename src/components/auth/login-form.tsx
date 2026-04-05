@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+import { clearStoredChallenge, writeStoredChallenge } from "@/lib/auth-flow-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +15,7 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const externalError = searchParams.get("error");
+  const resetSuccess = searchParams.get("reset") === "success";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -23,17 +26,66 @@ export function LoginForm() {
     setFormError(null);
 
     startTransition(async () => {
+      const response = await fetch("/api/cognito/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const payload = (await response.json()) as
+        | { error: string; nextStep?: string }
+        | {
+            status: "authenticated";
+            authTicket: string;
+          }
+        | {
+            status: "challenge";
+            challengeTicket: string;
+            challenge: import("@/lib/auth-flow-tickets").SafeChallenge;
+          };
+
+      if (!response.ok) {
+        if ("nextStep" in payload && payload.nextStep === "reset_password") {
+          router.push(`/login/reset-password?email=${encodeURIComponent(email)}`);
+          return;
+        }
+
+        setFormError("error" in payload ? payload.error : "No fue posible iniciar sesion.");
+        return;
+      }
+
+      if ("status" in payload && payload.status === "challenge") {
+        writeStoredChallenge({
+          challenge: payload.challenge,
+          challengeTicket: payload.challengeTicket,
+          email,
+        });
+        router.push("/login/challenge");
+        return;
+      }
+
+      if (!("status" in payload) || payload.status !== "authenticated") {
+        setFormError("No fue posible crear la sesion de acceso.");
+        return;
+      }
+
       const result = await signIn("credentials", {
-        email,
-        password,
+        mode: "ticket",
+        ticket: payload.authTicket,
         redirect: false,
       });
 
       if (result?.error) {
-        setFormError("Credenciales invalidas. Verifica email y password.");
+        setFormError("Cognito valido las credenciales, pero no se pudo crear la sesion.");
         return;
       }
 
+      clearStoredChallenge();
       router.push("/invoices");
       router.refresh();
     });
@@ -51,6 +103,11 @@ export function LoginForm() {
         <p className="text-sm leading-relaxed text-slate-600">
           Inicia con tu cuenta de Cognito desde esta misma pantalla para administrar invoices y generar PDFs.
         </p>
+        {resetSuccess ? (
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            Password actualizado. Ya puedes iniciar sesion con el nuevo acceso.
+          </p>
+        ) : null}
         {formError || externalError ? (
           <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {formError ?? "No fue posible iniciar sesion. Reintenta nuevamente."}
@@ -93,6 +150,13 @@ export function LoginForm() {
             Autenticacion gestionada por Amazon Cognito con politicas de password empresariales.
           </p>
         </div>
+        <Link
+          href="/login/forgot-password"
+          prefetch={false}
+          className="block text-center text-xs text-slate-500 underline underline-offset-4"
+        >
+          Olvide mi password
+        </Link>
       </form>
     </section>
   );

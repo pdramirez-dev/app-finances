@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { AuthShell } from "@/components/auth/auth-shell";
-import { LoginForm } from "@/components/auth/login-form";
+import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 
-export default async function LoginPage() {
+export default async function ResetPasswordPage() {
   const session = await auth();
 
   if (session?.user) {
@@ -12,8 +12,8 @@ export default async function LoginPage() {
   }
 
   return (
-    <AuthShell>
-      <LoginForm />
+    <AuthShell topActionHref="/login" topActionLabel="Login">
+      <ResetPasswordForm />
     </AuthShell>
   );
 }

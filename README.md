@@ -5,7 +5,7 @@ App web para generar y administrar invoices.
 ## Stack actual
 
 - Next.js (App Router + TypeScript)
-- NextAuth v5 con proveedor Cognito (OIDC)
+- NextAuth v5 con proveedor Credentials sobre Cognito
 - AWS AppSync (GraphQL)
 - DynamoDB (multi-tabla)
 - S3 (PDFs)
@@ -20,7 +20,7 @@ App web para generar y administrar invoices.
 
 ## Funcionalidades
 
-- Login protegido (`/login`) con Cognito
+- Login protegido (`/login`) con UI custom sobre Cognito
 - Lista de invoices (`/invoices`)
 - Crear invoice con secciones y line items (`/invoices/new`)
 - Ver detalle y actualizar status (`DRAFT`, `SENT`, `PAID`)
