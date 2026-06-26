@@ -275,6 +275,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
       enableDataApi: true,
       defaultDatabaseName: "app_finances",
       writer: rds.ClusterInstance.serverlessV2("Writer"),
+      backup: { retention: cdk.Duration.days(7) },
       removalPolicy,
     });
 

@@ -1,6 +1,6 @@
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
-import { test, expect } from "vitest";
+import { test } from "vitest";
 import { AppFinancesBackendStack } from "../lib/stacks/backend-stack";
 
 function synth() {
