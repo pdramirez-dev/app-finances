@@ -1,8 +1,10 @@
 import { test, expect } from "vitest";
 import {
-  listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice,
+  listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice, updateInvoiceStatus,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
   putClient, putBankAccount, putAccount,
+  putInvoiceCreate, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
 } from "./sql-builders";
 
 test("listInvoices scopes by claim accountId and ignores args.accountId", () => {
@@ -104,4 +106,94 @@ test("putBankAccount RETURNING uses aliased column list", () => {
   expect(r.statement).toMatch(/RETURNING/i);
   expect(r.statement).toMatch(/id AS "bankAccountId"/);
   expect(r.statement).toMatch(/beneficiary_name AS "beneficiaryName"/);
+});
+
+// ── Invoice alias tests ────────────────────────────────────────────────────────
+
+test("listInvoices SELECT aliases invoice columns to camelCase GraphQL field names", () => {
+  const r = listInvoices("ACC_A", {});
+  expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.statement).toMatch(/invoice_number AS "invoiceNumber"/);
+  expect(r.statement).toMatch(/week_number AS "weekNumber"/);
+  expect(r.statement).toMatch(/bill_to_name AS "billToName"/);
+  expect(r.statement).toMatch(/grand_total AS "grandTotal"/);
+  expect(r.statement).toMatch(/created_at AS "createdAt"/);
+  expect(r.statement).toMatch(/updated_at AS "updatedAt"/);
+});
+
+test("updateInvoiceStatus RETURNING uses aliased invoice columns", () => {
+  const r = updateInvoiceStatus("ACC_A", { invoiceId: "X", status: "SENT" } as any);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.statement).toMatch(/invoice_number AS "invoiceNumber"/);
+});
+
+test("putInvoice (create) bumps the per-account counter and inserts atomically", () => {
+  const r = putInvoiceCreate("ACC_A", { input: { invoiceNumber: 0, date: "2026-01-01", weekNumber: 1,
+    billToName: "x", billToAddress: "y", project: "p", grandTotal: 10 } } as any);
+  expect(r.statement).toMatch(/INSERT INTO invoice_counters/i);
+  expect(r.statement).toMatch(/ON CONFLICT.*DO UPDATE SET/is);
+  expect(r.statement).toMatch(/INSERT INTO invoices/i);
+  expect(r.params.acc).toBe("ACC_A");
+});
+
+test("putInvoiceCreate RETURNING uses aliased invoice columns", () => {
+  const r = putInvoiceCreate("ACC_A", { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "x", billToAddress: "y", project: "p", grandTotal: 10 } } as any);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.statement).toMatch(/invoice_number AS "invoiceNumber"/);
+  expect(r.statement).not.toMatch(/RETURNING \*/);
+});
+
+test("putInvoiceSection scopes via invoices join and returns aliased section cols", () => {
+  const r = putInvoiceSection("ACC_A", { input: { invoiceId: "INV1", title: "T", position: 0, total: 0 } } as any);
+  expect(r.statement).toMatch(/INSERT INTO invoice_sections/i);
+  expect(r.statement).toMatch(/account_id = :acc/i);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "sectionId"/);
+  expect(r.statement).toMatch(/invoice_id AS "invoiceId"/);
+  expect(r.params.acc).toBe("ACC_A");
+});
+
+test("deleteInvoiceSection scopes through invoices join", () => {
+  const r = deleteInvoiceSection("ACC_A", { invoiceId: "INV1", sectionId: "SEC1" });
+  expect(r.statement).toMatch(/DELETE FROM invoice_sections/i);
+  expect(r.statement).toMatch(/account_id = :acc/i);
+  expect(r.params).toMatchObject({ sectionId: "SEC1", invoiceId: "INV1", acc: "ACC_A" });
+});
+
+test("putInvoiceLineItem scopes through sections+invoices join and returns aliased cols", () => {
+  const r = putInvoiceLineItem("ACC_A", { input: { sectionId: "SEC1", description: "d", quantity: 1, amount: 10, position: 0 } } as any);
+  expect(r.statement).toMatch(/INSERT INTO invoice_line_items/i);
+  expect(r.statement).toMatch(/account_id = :acc/i);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "lineItemId"/);
+  expect(r.statement).toMatch(/section_id AS "sectionId"/);
+  expect(r.params.acc).toBe("ACC_A");
+});
+
+test("deleteInvoiceLineItem scopes through sections+invoices join", () => {
+  const r = deleteInvoiceLineItem("ACC_A", { sectionId: "SEC1", lineItemId: "LI1" });
+  expect(r.statement).toMatch(/DELETE FROM invoice_line_items/i);
+  expect(r.statement).toMatch(/account_id = :acc/i);
+  expect(r.params).toMatchObject({ lineItemId: "LI1", sectionId: "SEC1", acc: "ACC_A" });
+});
+
+test("sectionsByInvoice reads invoiceId from source (aliased parent)", () => {
+  const r = sectionsByInvoice("ACC_A", { invoiceId: "INV1" });
+  expect(r.statement).toMatch(/SELECT/i);
+  expect(r.statement).toMatch(/invoice_sections/i);
+  expect(r.statement).toMatch(/account_id = :acc/i);
+  expect(r.statement).toMatch(/id AS "sectionId"/);
+  expect(r.params).toMatchObject({ invoiceId: "INV1", acc: "ACC_A" });
+});
+
+test("lineItemsBySection reads sectionId from source", () => {
+  const r = lineItemsBySection("ACC_A", { sectionId: "SEC1" });
+  expect(r.statement).toMatch(/SELECT/i);
+  expect(r.statement).toMatch(/invoice_line_items/i);
+  expect(r.statement).toMatch(/account_id = :acc/i);
+  expect(r.statement).toMatch(/id AS "lineItemId"/);
+  expect(r.params).toMatchObject({ sectionId: "SEC1", acc: "ACC_A" });
 });

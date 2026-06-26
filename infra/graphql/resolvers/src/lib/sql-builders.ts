@@ -1,7 +1,13 @@
 export type SqlRequest = { statement: string; params: Record<string, unknown> };
 
 const INVOICE_COLS =
-  "id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, currency, notes, grand_total, status, created_at, updated_at";
+  `id AS "invoiceId", invoice_number AS "invoiceNumber", date, week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const SECTION_COLS =
+  `id AS "sectionId", invoice_id AS "invoiceId", title, position, total`;
+
+const LINE_ITEM_COLS =
+  `id AS "lineItemId", section_id AS "sectionId", description, quantity, amount, position`;
 
 const CLIENT_COLS =
   `id AS "clientId", account_id AS "accountId", name, email, phone, address, tax_id AS "taxId", created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -126,5 +132,88 @@ export function putAccount(acc: string, args: { input: any }): SqlRequest {
                 RETURNING ${ACCOUNT_COLS}`,
     params: { acc, type: i.type, displayName: i.displayName, legalName: i.legalName ?? null,
               taxId: i.taxId ?? null, email: i.email ?? null, phone: i.phone ?? null, address: i.address ?? null },
+  };
+}
+
+export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `WITH n AS (
+        INSERT INTO invoice_counters (account_id, last_invoice_number) VALUES (:acc, 1)
+        ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
+        RETURNING last_invoice_number)
+      INSERT INTO invoices (account_id, client_id, invoice_number, date, week_number, bill_to_name,
+        bill_to_address, project, currency, notes, grand_total, status)
+      SELECT :acc, :clientId, n.last_invoice_number, :date, :week, :billName, :billAddr, :project,
+        :currency, :notes, :grandTotal, :status FROM n
+      RETURNING ${INVOICE_COLS}`,
+    params: { acc, clientId: i.clientId ?? null, date: i.date, week: i.weekNumber,
+              billName: i.billToName, billAddr: i.billToAddress, project: i.project,
+              currency: i.currency ?? "USD", notes: i.notes ?? null,
+              grandTotal: i.grandTotal, status: i.status ?? "DRAFT" },
+  };
+}
+
+export function putInvoiceSection(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `INSERT INTO invoice_sections (id, invoice_id, title, position, total)
+      SELECT COALESCE(:id, gen_random_uuid()), inv.id, :title, :position, :total
+        FROM invoices inv WHERE inv.id = :invoiceId AND inv.account_id = :acc
+      ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, position = EXCLUDED.position, total = EXCLUDED.total
+      RETURNING ${SECTION_COLS}`,
+    params: { id: i.sectionId ?? null, invoiceId: i.invoiceId, acc, title: i.title,
+              position: i.position, total: i.total },
+  };
+}
+
+export function deleteInvoiceSection(acc: string, args: { invoiceId: string; sectionId: string }): SqlRequest {
+  return {
+    statement: `DELETE FROM invoice_sections s USING invoices inv
+      WHERE s.id = :sectionId AND s.invoice_id = inv.id AND inv.id = :invoiceId AND inv.account_id = :acc`,
+    params: { sectionId: args.sectionId, invoiceId: args.invoiceId, acc },
+  };
+}
+
+export function putInvoiceLineItem(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `INSERT INTO invoice_line_items (id, section_id, description, quantity, amount, position)
+      SELECT COALESCE(:id, gen_random_uuid()), s.id, :description, :quantity, :amount, :position
+        FROM invoice_sections s JOIN invoices inv ON inv.id = s.invoice_id
+        WHERE s.id = :sectionId AND inv.account_id = :acc
+      ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description, quantity = EXCLUDED.quantity,
+        amount = EXCLUDED.amount, position = EXCLUDED.position
+      RETURNING ${LINE_ITEM_COLS}`,
+    params: { id: i.lineItemId ?? null, sectionId: i.sectionId, acc,
+              description: i.description, quantity: i.quantity,
+              amount: i.amount, position: i.position },
+  };
+}
+
+export function deleteInvoiceLineItem(acc: string, args: { sectionId: string; lineItemId: string }): SqlRequest {
+  return {
+    statement: `DELETE FROM invoice_line_items li USING invoice_sections s JOIN invoices inv ON inv.id = s.invoice_id
+      WHERE li.id = :lineItemId AND li.section_id = s.id AND s.id = :sectionId AND inv.account_id = :acc`,
+    params: { lineItemId: args.lineItemId, sectionId: args.sectionId, acc },
+  };
+}
+
+export function sectionsByInvoice(acc: string, source: { invoiceId: string }): SqlRequest {
+  return {
+    statement: `SELECT s.id AS "sectionId", s.invoice_id AS "invoiceId", s.title, s.position, s.total
+      FROM invoice_sections s JOIN invoices inv ON inv.id = s.invoice_id
+      WHERE s.invoice_id = :invoiceId AND inv.account_id = :acc ORDER BY s.position`,
+    params: { invoiceId: source.invoiceId, acc },
+  };
+}
+
+export function lineItemsBySection(acc: string, source: { sectionId: string }): SqlRequest {
+  return {
+    statement: `SELECT li.id AS "lineItemId", li.section_id AS "sectionId", li.description, li.quantity, li.amount, li.position
+      FROM invoice_line_items li JOIN invoice_sections s ON s.id = li.section_id
+      JOIN invoices inv ON inv.id = s.invoice_id
+      WHERE li.section_id = :sectionId AND inv.account_id = :acc ORDER BY li.position`,
+    params: { sectionId: source.sectionId, acc },
   };
 }

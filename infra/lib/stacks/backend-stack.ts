@@ -391,25 +391,25 @@ export class AppFinancesBackendStack extends cdk.Stack {
     const pdfLambdaDs = graphqlApi.addLambdaDataSource("PdfLambdaDs", generateInvoicePdfFn);
     const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!);
 
-    invoicesDs.createResolver("QueryGetInvoiceResolver", {
+    rdsDs.createResolver("QueryGetInvoiceResolver", {
       typeName: "Query",
       fieldName: "getInvoice",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-invoice.js"),
+      code: resolverFromFile("dist/query-get-invoice.js"),
     });
 
-    invoicesDs.createResolver("QueryGetInvoiceByNumberResolver", {
+    rdsDs.createResolver("QueryGetInvoiceByNumberResolver", {
       typeName: "Query",
       fieldName: "getInvoiceByNumber",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-invoice-by-number.js"),
+      code: resolverFromFile("dist/query-get-invoice-by-number.js"),
     });
 
-    invoicesDs.createResolver("QueryListInvoicesResolver", {
+    rdsDs.createResolver("QueryListInvoicesResolver", {
       typeName: "Query",
       fieldName: "listInvoices",
       runtime: jsRuntime,
-      code: resolverFromFile("query-list-invoices.js"),
+      code: resolverFromFile("dist/query-list-invoices.js"),
     });
 
     rdsDs.createResolver("QueryGetAccountResolver", {
@@ -440,11 +440,11 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("dist/query-get-bank-account.js"),
     });
 
-    invoicesDs.createResolver("MutationPutInvoiceResolver", {
+    rdsDs.createResolver("MutationPutInvoiceResolver", {
       typeName: "Mutation",
       fieldName: "putInvoice",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-invoice.js"),
+      code: resolverFromFile("dist/mutation-put-invoice.js"),
     });
 
     rdsDs.createResolver("MutationPutAccountResolver", {
@@ -475,60 +475,60 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("dist/mutation-put-bank-account.js"),
     });
 
-    sectionsDs.createResolver("MutationPutInvoiceSectionResolver", {
+    rdsDs.createResolver("MutationPutInvoiceSectionResolver", {
       typeName: "Mutation",
       fieldName: "putInvoiceSection",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-invoice-section.js"),
+      code: resolverFromFile("dist/mutation-put-invoice-section.js"),
     });
 
-    lineItemsDs.createResolver("MutationPutInvoiceLineItemResolver", {
+    rdsDs.createResolver("MutationPutInvoiceLineItemResolver", {
       typeName: "Mutation",
       fieldName: "putInvoiceLineItem",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-invoice-line-item.js"),
+      code: resolverFromFile("dist/mutation-put-invoice-line-item.js"),
     });
 
-    sectionsDs.createResolver("MutationDeleteInvoiceSectionResolver", {
+    rdsDs.createResolver("MutationDeleteInvoiceSectionResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoiceSection",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-invoice-section.js"),
+      code: resolverFromFile("dist/mutation-delete-invoice-section.js"),
     });
 
-    lineItemsDs.createResolver("MutationDeleteInvoiceLineItemResolver", {
+    rdsDs.createResolver("MutationDeleteInvoiceLineItemResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoiceLineItem",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-invoice-line-item.js"),
+      code: resolverFromFile("dist/mutation-delete-invoice-line-item.js"),
     });
 
-    invoicesDs.createResolver("MutationUpdateInvoiceStatusResolver", {
+    rdsDs.createResolver("MutationUpdateInvoiceStatusResolver", {
       typeName: "Mutation",
       fieldName: "updateInvoiceStatus",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-update-invoice-status.js"),
+      code: resolverFromFile("dist/mutation-update-invoice-status.js"),
     });
 
-    invoicesDs.createResolver("MutationDeleteInvoiceResolver", {
+    rdsDs.createResolver("MutationDeleteInvoiceResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoice",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-invoice.js"),
+      code: resolverFromFile("dist/mutation-delete-invoice.js"),
     });
 
-    sectionsDs.createResolver("InvoiceSectionsResolver", {
+    rdsDs.createResolver("InvoiceSectionsResolver", {
       typeName: "Invoice",
       fieldName: "sections",
       runtime: jsRuntime,
-      code: resolverFromFile("invoice-sections.js"),
+      code: resolverFromFile("dist/invoice-sections.js"),
     });
 
-    lineItemsDs.createResolver("InvoiceSectionLineItemsResolver", {
+    rdsDs.createResolver("InvoiceSectionLineItemsResolver", {
       typeName: "InvoiceSection",
       fieldName: "lineItems",
       runtime: jsRuntime,
-      code: resolverFromFile("invoice-section-line-items.js"),
+      code: resolverFromFile("dist/invoice-section-line-items.js"),
     });
 
     pdfLambdaDs.createResolver("MutationRequestInvoicePdfResolver", {

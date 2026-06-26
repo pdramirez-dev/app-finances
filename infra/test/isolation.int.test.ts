@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
-import { listClients, getClient, getInvoice } from "../graphql/resolvers/src/lib/sql-builders";
+import {
+  listClients, getClient, getInvoice,
+  putInvoiceCreate, putInvoiceSection, deleteInvoiceSection,
+} from "../graphql/resolvers/src/lib/sql-builders";
 
 const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_finances_test";
 let db: Client;
@@ -19,10 +22,12 @@ beforeAll(async () => {
   await runMigrations(URL);
   db = new Client({ connectionString: URL });
   await db.connect();
-  await db.query("DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; DELETE FROM clients; DELETE FROM accounts;");
+  await db.query("DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
   await db.query("INSERT INTO accounts (id, type, display_name) VALUES ('11111111-1111-1111-1111-111111111111','COMPANY','A'),('22222222-2222-2222-2222-222222222222','COMPANY','B')");
   await db.query("INSERT INTO clients (id, account_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','Cliente A'),('bbbbbbbb-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','Cliente B')");
   await db.query(`INSERT INTO invoices (id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, grand_total) VALUES ('cccccccc-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','bbbbbbbb-0000-0000-0000-000000000001',1,'2024-01-01',1,'Cliente B','123 B Street','Project B',1000.00)`);
+  // Seed the counter for ACC_B to match its existing invoice so putInvoiceCreate doesn't collide.
+  await db.query(`INSERT INTO invoice_counters (account_id, last_invoice_number) VALUES ('22222222-2222-2222-2222-222222222222', 1)`);
 });
 
 afterAll(async () => { await db?.end(); });
@@ -50,4 +55,27 @@ test("account A cannot read account B's invoice by id", async () => {
 test("account B can read its own invoice by id (seed verification)", async () => {
   const rows = await run(getInvoice(ACC_B, { invoiceId: "cccccccc-0000-0000-0000-000000000001" }));
   expect(rows).toHaveLength(1);
+});
+
+test("putInvoiceCreate yields sequential per-account numbers starting at 1", async () => {
+  const mk = () => ({ input: { date: "2026-01-01", weekNumber: 1, billToName: "a",
+    billToAddress: "b", project: "p", grandTotal: 1 } });
+  const r1 = await run(putInvoiceCreate(ACC_A, mk() as any));
+  const r2 = await run(putInvoiceCreate(ACC_A, mk() as any));
+  const r3 = await run(putInvoiceCreate(ACC_B, mk() as any));
+  // ACC_A has no prior invoices: first call is 1, second is 2
+  expect(r1[0].invoiceNumber).toBe(1);
+  expect(r2[0].invoiceNumber).toBe(2);
+  // ACC_B seed has invoice #1 and counter seeded to 1, so next is 2; importantly its counter is independent of ACC_A's
+  expect(r3[0].invoiceNumber).toBe(2);
+  // Cross-account independence: ACC_B's number is NOT a continuation of ACC_A's counter
+  expect(r3[0].invoiceNumber).not.toBe(r2[0].invoiceNumber + 1);
+});
+
+test("deleteInvoiceSection cannot touch another account's section", async () => {
+  const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
+  const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "T", position: 0, total: 0 } } as any)))[0];
+  const deletedByB = await run(deleteInvoiceSection(ACC_B, { invoiceId: inv.invoiceId, sectionId: sec.sectionId }));
+  expect(deletedByB).toHaveLength(0); // B deletes nothing
 });
