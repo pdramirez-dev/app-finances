@@ -3,6 +3,15 @@ export type SqlRequest = { statement: string; params: Record<string, unknown> };
 const INVOICE_COLS =
   "id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, currency, notes, grand_total, status, created_at, updated_at";
 
+const CLIENT_COLS =
+  `id AS "clientId", account_id AS "accountId", name, email, phone, address, tax_id AS "taxId", created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const ACCOUNT_COLS =
+  `id AS "accountId", type, display_name AS "displayName", legal_name AS "legalName", tax_id AS "taxId", email, phone, address, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const BANK_ACCOUNT_COLS =
+  `id AS "bankAccountId", account_id AS "accountId", beneficiary_name AS "beneficiaryName", bank_name AS "bankName", account_number_masked AS "accountNumberMasked", routing_number_masked AS "routingNumberMasked", iban_masked AS "ibanMasked", swift_code AS "swiftCode", currency, country, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
 export function listInvoices(acc: string, args: { status?: string; limit?: number }): SqlRequest {
   const where = args.status ? "account_id = :acc AND status = :status" : "account_id = :acc";
   const params: Record<string, unknown> = { acc, lim: args.limit ?? 25 };
@@ -44,14 +53,14 @@ export function updateInvoiceStatus(acc: string, args: { invoiceId: string; stat
 
 export function listClients(acc: string, _args: { limit?: number }): SqlRequest {
   return {
-    statement: "SELECT * FROM clients WHERE account_id = :acc ORDER BY lower(name) LIMIT :lim",
+    statement: `SELECT ${CLIENT_COLS} FROM clients WHERE account_id = :acc ORDER BY lower(name) LIMIT :lim`,
     params: { acc, lim: _args.limit ?? 25 },
   };
 }
 
 export function getClient(acc: string, args: { clientId: string }): SqlRequest {
   return {
-    statement: "SELECT * FROM clients WHERE id = :id AND account_id = :acc",
+    statement: `SELECT ${CLIENT_COLS} FROM clients WHERE id = :id AND account_id = :acc`,
     params: { id: args.clientId, acc },
   };
 }
@@ -65,13 +74,13 @@ export function deleteClient(acc: string, args: { clientId: string }): SqlReques
 
 export function getBankAccount(acc: string, args: { bankAccountId: string }): SqlRequest {
   return {
-    statement: "SELECT * FROM bank_accounts WHERE id = :id AND account_id = :acc",
+    statement: `SELECT ${BANK_ACCOUNT_COLS} FROM bank_accounts WHERE id = :id AND account_id = :acc`,
     params: { id: args.bankAccountId, acc },
   };
 }
 
 export function getAccount(acc: string): SqlRequest {
-  return { statement: "SELECT * FROM accounts WHERE id = :acc", params: { acc } };
+  return { statement: `SELECT ${ACCOUNT_COLS} FROM accounts WHERE id = :acc`, params: { acc } };
 }
 
 export function putClient(acc: string, args: { input: any }): SqlRequest {
@@ -82,7 +91,7 @@ export function putClient(acc: string, args: { input: any }): SqlRequest {
                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email,
                   phone = EXCLUDED.phone, address = EXCLUDED.address, tax_id = EXCLUDED.tax_id, updated_at = now()
                 WHERE clients.account_id = :acc
-                RETURNING *`,
+                RETURNING ${CLIENT_COLS}`,
     params: { id: i.clientId ?? null, acc, name: i.name, email: i.email ?? null,
               phone: i.phone ?? null, address: i.address ?? null, taxId: i.taxId ?? null },
   };
@@ -99,7 +108,7 @@ export function putBankAccount(acc: string, args: { input: any }): SqlRequest {
                   iban_masked = EXCLUDED.iban_masked, swift_code = EXCLUDED.swift_code, currency = EXCLUDED.currency,
                   country = EXCLUDED.country, updated_at = now()
                 WHERE bank_accounts.account_id = :acc
-                RETURNING *`,
+                RETURNING ${BANK_ACCOUNT_COLS}`,
     params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
               acct: i.accountNumberMasked ?? null, rout: i.routingNumberMasked ?? null, iban: i.ibanMasked ?? null,
               swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
@@ -114,7 +123,7 @@ export function putAccount(acc: string, args: { input: any }): SqlRequest {
                 ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, display_name = EXCLUDED.display_name,
                   legal_name = EXCLUDED.legal_name, tax_id = EXCLUDED.tax_id, email = EXCLUDED.email,
                   phone = EXCLUDED.phone, address = EXCLUDED.address, updated_at = now()
-                RETURNING *`,
+                RETURNING ${ACCOUNT_COLS}`,
     params: { acc, type: i.type, displayName: i.displayName, legalName: i.legalName ?? null,
               taxId: i.taxId ?? null, email: i.email ?? null, phone: i.phone ?? null, address: i.address ?? null },
   };

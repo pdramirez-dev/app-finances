@@ -34,6 +34,7 @@ test("listClients only returns the caller account's clients", async () => {
   const rows = await run(listClients(ACC_A, {}));
   expect(rows).toHaveLength(1);
   expect(rows[0].name).toBe("Cliente A");
+  expect(rows[0].clientId).toBe("aaaaaaaa-0000-0000-0000-000000000001");
 });
 
 test("account A cannot read account B's client by id", async () => {

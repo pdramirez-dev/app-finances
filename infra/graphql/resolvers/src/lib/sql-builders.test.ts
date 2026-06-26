@@ -56,10 +56,52 @@ test("putBankAccount injects account_id from claim, not from input", () => {
   expect(r.params.acc).toBe("ACC_A");
 });
 
-test("putAccount upserts with account id from claim and returns *", () => {
+test("putAccount upserts with account id from claim and returns aliased columns", () => {
   const r = putAccount("ACC_A", { input: { type: "business", displayName: "Acme" } } as any);
   expect(r.statement).toMatch(/INSERT INTO accounts/i);
   expect(r.statement).toMatch(/ON CONFLICT/i);
-  expect(r.statement).toMatch(/RETURNING \*/i);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "accountId"/);
   expect(r.params.acc).toBe("ACC_A");
+});
+
+test("getClient SELECT aliases DB columns to camelCase GraphQL field names", () => {
+  const r = getClient("ACC_A", { clientId: "C" } as any);
+  expect(r.statement).toMatch(/id AS "clientId"/);
+  expect(r.statement).toMatch(/tax_id AS "taxId"/);
+  expect(r.statement).toMatch(/created_at AS "createdAt"/);
+  expect(r.statement).toMatch(/account_id AS "accountId"/);
+  expect(r.statement).toMatch(/updated_at AS "updatedAt"/);
+});
+
+test("getAccount SELECT aliases DB columns to camelCase GraphQL field names", () => {
+  const r = getAccount("ACC_A");
+  expect(r.statement).toMatch(/id AS "accountId"/);
+  expect(r.statement).toMatch(/display_name AS "displayName"/);
+  expect(r.statement).toMatch(/legal_name AS "legalName"/);
+  expect(r.statement).toMatch(/tax_id AS "taxId"/);
+  expect(r.statement).toMatch(/created_at AS "createdAt"/);
+});
+
+test("getBankAccount SELECT aliases DB columns to camelCase GraphQL field names", () => {
+  const r = getBankAccount("ACC_A", { bankAccountId: "B" } as any);
+  expect(r.statement).toMatch(/id AS "bankAccountId"/);
+  expect(r.statement).toMatch(/beneficiary_name AS "beneficiaryName"/);
+  expect(r.statement).toMatch(/swift_code AS "swiftCode"/);
+  expect(r.statement).toMatch(/account_number_masked AS "accountNumberMasked"/);
+  expect(r.statement).toMatch(/created_at AS "createdAt"/);
+});
+
+test("putClient RETURNING uses aliased column list", () => {
+  const r = putClient("ACC_A", { input: { name: "X" } } as any);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "clientId"/);
+  expect(r.statement).toMatch(/tax_id AS "taxId"/);
+});
+
+test("putBankAccount RETURNING uses aliased column list", () => {
+  const r = putBankAccount("ACC_A", { input: { beneficiaryName: "X", bankName: "B", currency: "USD" } } as any);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "bankAccountId"/);
+  expect(r.statement).toMatch(/beneficiary_name AS "beneficiaryName"/);
 });
