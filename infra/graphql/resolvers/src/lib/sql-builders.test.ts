@@ -132,7 +132,7 @@ test("putInvoice (create) bumps the per-account counter and inserts atomically",
   const r = putInvoiceCreate("ACC_A", { input: { invoiceNumber: 0, date: "2026-01-01", weekNumber: 1,
     billToName: "x", billToAddress: "y", project: "p", grandTotal: 10 } } as any);
   expect(r.statement).toMatch(/INSERT INTO invoice_counters/i);
-  expect(r.statement).toMatch(/ON CONFLICT.*DO UPDATE SET/is);
+  expect(r.statement).toMatch(/ON CONFLICT[\s\S]*DO UPDATE SET/i);
   expect(r.statement).toMatch(/INSERT INTO invoices/i);
   expect(r.params.acc).toBe("ACC_A");
 });
