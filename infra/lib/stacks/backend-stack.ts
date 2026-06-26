@@ -289,6 +289,9 @@ export class AppFinancesBackendStack extends cdk.Stack {
         email: { required: true, mutable: false },
         fullname: { required: false, mutable: true },
       },
+      customAttributes: {
+        accountId: new cognito.StringAttribute({ mutable: false }),
+      },
       passwordPolicy: {
         minLength: 12,
         requireDigits: true,

@@ -1,5 +1,5 @@
 import { App } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import { Match, Template } from "aws-cdk-lib/assertions";
 import { test, expect } from "vitest";
 import { AppFinancesBackendStack } from "../lib/stacks/backend-stack";
 
@@ -19,5 +19,18 @@ test("provisions an Aurora Serverless v2 Postgres cluster with Data API", () => 
   t.hasResourceProperties("AWS::RDS::DBCluster", {
     Engine: "aurora-postgresql",
     EnableHttpEndpoint: true,
+  });
+});
+
+test("user pool defines an immutable custom:accountId attribute", () => {
+  const t = synth();
+  t.hasResourceProperties("AWS::Cognito::UserPool", {
+    Schema: Match.arrayWith([
+      Match.objectLike({
+        Name: "accountId",
+        AttributeDataType: "String",
+        Mutable: false,
+      }),
+    ]),
   });
 });
