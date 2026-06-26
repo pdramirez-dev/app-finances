@@ -156,6 +156,11 @@ test("putInvoiceSection scopes via invoices join and returns aliased section col
   expect(r.params.acc).toBe("ACC_A");
 });
 
+test("putInvoiceSection conflict-update is account-scoped (no cross-tenant tamper)", () => {
+  const r = putInvoiceSection("ACC_A", { input: { invoiceId: "INV1", title: "T", position: 0, total: 0 } } as any);
+  expect(r.statement).toMatch(/DO UPDATE SET[\s\S]*WHERE invoice_sections\.invoice_id IN \(SELECT id FROM invoices WHERE account_id = :acc\)/i);
+});
+
 test("deleteInvoiceSection scopes through invoices join", () => {
   const r = deleteInvoiceSection("ACC_A", { invoiceId: "INV1", sectionId: "SEC1" });
   expect(r.statement).toMatch(/DELETE FROM invoice_sections/i);
@@ -171,6 +176,11 @@ test("putInvoiceLineItem scopes through sections+invoices join and returns alias
   expect(r.statement).toMatch(/id AS "lineItemId"/);
   expect(r.statement).toMatch(/section_id AS "sectionId"/);
   expect(r.params.acc).toBe("ACC_A");
+});
+
+test("putInvoiceLineItem conflict-update is account-scoped (no cross-tenant tamper)", () => {
+  const r = putInvoiceLineItem("ACC_A", { input: { sectionId: "SEC1", description: "d", quantity: 1, amount: 10, position: 0 } } as any);
+  expect(r.statement).toMatch(/DO UPDATE SET[\s\S]*WHERE invoice_line_items\.section_id IN \(SELECT s\.id FROM invoice_sections s JOIN invoices inv ON inv\.id = s\.invoice_id WHERE inv\.account_id = :acc\)/i);
 });
 
 test("deleteInvoiceLineItem scopes through sections+invoices join", () => {

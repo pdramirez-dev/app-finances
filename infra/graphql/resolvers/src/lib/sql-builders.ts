@@ -161,6 +161,7 @@ export function putInvoiceSection(acc: string, args: { input: any }): SqlRequest
       SELECT COALESCE(:id, gen_random_uuid()), inv.id, :title, :position, :total
         FROM invoices inv WHERE inv.id = :invoiceId AND inv.account_id = :acc
       ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, position = EXCLUDED.position, total = EXCLUDED.total
+      WHERE invoice_sections.invoice_id IN (SELECT id FROM invoices WHERE account_id = :acc)
       RETURNING ${SECTION_COLS}`,
     params: { id: i.sectionId ?? null, invoiceId: i.invoiceId, acc, title: i.title,
               position: i.position, total: i.total },
@@ -184,6 +185,7 @@ export function putInvoiceLineItem(acc: string, args: { input: any }): SqlReques
         WHERE s.id = :sectionId AND inv.account_id = :acc
       ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description, quantity = EXCLUDED.quantity,
         amount = EXCLUDED.amount, position = EXCLUDED.position
+      WHERE invoice_line_items.section_id IN (SELECT s.id FROM invoice_sections s JOIN invoices inv ON inv.id = s.invoice_id WHERE inv.account_id = :acc)
       RETURNING ${LINE_ITEM_COLS}`,
     params: { id: i.lineItemId ?? null, sectionId: i.sectionId, acc,
               description: i.description, quantity: i.quantity,

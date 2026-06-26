@@ -4,6 +4,7 @@ import { runMigrations } from "../../db/migrate";
 import {
   listClients, getClient, getInvoice,
   putInvoiceCreate, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
 const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_finances_test";
@@ -78,4 +79,33 @@ test("deleteInvoiceSection cannot touch another account's section", async () => 
   const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "T", position: 0, total: 0 } } as any)))[0];
   const deletedByB = await run(deleteInvoiceSection(ACC_B, { invoiceId: inv.invoiceId, sectionId: sec.sectionId }));
   expect(deletedByB).toHaveLength(0); // B deletes nothing
+});
+
+test("putInvoiceSection cannot tamper with another account's section via ON CONFLICT", async () => {
+  const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
+  const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "ORIGINAL", position: 0, total: 0 } } as any)))[0];
+  // B owns its own invoice; it submits A's section id as the conflicting PK to try to overwrite it.
+  const bInv = (await run(putInvoiceCreate(ACC_B, { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "b", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
+  const tamper = await run(putInvoiceSection(ACC_B, { input: { sectionId: sec.sectionId, invoiceId: bInv.invoiceId, title: "HACKED", position: 9, total: 999 } } as any));
+  expect(tamper).toHaveLength(0); // conflict-update guard blocks the cross-tenant write
+  const after = (await run(getInvoice(ACC_A, { invoiceId: inv.invoiceId })));
+  expect(after).toHaveLength(1);
+  const stillOriginal = await db.query(`SELECT title, position, total FROM invoice_sections WHERE id = $1`, [sec.sectionId]);
+  expect(stillOriginal.rows[0]).toMatchObject({ title: "ORIGINAL", position: 0 });
+});
+
+test("putInvoiceLineItem cannot tamper with another account's line item via ON CONFLICT", async () => {
+  const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
+  const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "S", position: 0, total: 0 } } as any)))[0];
+  const li = (await run(putInvoiceLineItem(ACC_A, { input: { sectionId: sec.sectionId, description: "ORIGINAL", quantity: 1, amount: 10, position: 0 } } as any)))[0];
+  const bInv = (await run(putInvoiceCreate(ACC_B, { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "b", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
+  const bSec = (await run(putInvoiceSection(ACC_B, { input: { invoiceId: bInv.invoiceId, title: "BS", position: 0, total: 0 } } as any)))[0];
+  const tamper = await run(putInvoiceLineItem(ACC_B, { input: { lineItemId: li.lineItemId, sectionId: bSec.sectionId, description: "HACKED", quantity: 99, amount: 999, position: 9 } } as any));
+  expect(tamper).toHaveLength(0);
+  const still = await db.query(`SELECT description, amount FROM invoice_line_items WHERE id = $1`, [li.lineItemId]);
+  expect(still.rows[0]).toMatchObject({ description: "ORIGINAL" });
 });
