@@ -10,7 +10,6 @@ import {
   deleteInvoiceLineItem,
   deleteInvoiceSection,
   getInvoiceById,
-  getInvoiceByNumber,
   putInvoice,
   putInvoiceLineItem,
   putInvoiceSection,
@@ -57,7 +56,6 @@ export async function createInvoiceAction(
   }
 
   const payloadResult = createInvoiceInputSchema.safeParse({
-    invoiceNumber: formData.get("invoiceNumber"),
     date: formData.get("date"),
     weekNumber: formData.get("weekNumber"),
     billToName: formData.get("billToName"),
@@ -72,15 +70,8 @@ export async function createInvoiceAction(
   }
 
   const payload = payloadResult.data;
-  const duplicateInvoice = await getInvoiceByNumber(payload.invoiceNumber);
-
-  if (duplicateInvoice) {
-    return { error: "Invoice number already exists" };
-  }
-
   const grandTotal = calculateGrandTotal(payload.sections);
   const createdInvoice = await putInvoice({
-    invoiceNumber: payload.invoiceNumber,
     date: format(payload.date, "yyyy-MM-dd"),
     weekNumber: payload.weekNumber,
     billToName: payload.billToName,

@@ -132,7 +132,7 @@ type BankAccount {
 
 input PutInvoiceInput {
   invoiceId: ID
-  invoiceNumber: Int!
+  invoiceNumber: Int
   date: AWSDate!
   weekNumber: Int!
   billToName: String!

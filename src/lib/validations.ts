@@ -18,7 +18,6 @@ export const invoiceSectionsInputSchema = z
   .min(1, "At least one section is required");
 
 export const createInvoiceInputSchema = z.object({
-  invoiceNumber: z.coerce.number().int().positive("Invoice number is required"),
   date: z
     .string()
     .min(1, "Date is required")

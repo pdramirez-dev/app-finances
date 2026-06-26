@@ -370,15 +370,9 @@ export async function getInvoiceByNumber(invoiceNumber: number): Promise<Invoice
   return data.getInvoiceByNumber ? normalizeInvoice(data.getInvoiceByNumber) : null;
 }
 
-export async function getNextInvoiceNumber(): Promise<number> {
-  const invoices = await listInvoices({ limit: 100 });
-  const maxInvoiceNumber = invoices.reduce((max, invoice) => Math.max(max, invoice.invoiceNumber), 0);
-  return maxInvoiceNumber + 1;
-}
-
 export type PutInvoiceInput = {
   invoiceId?: string;
-  invoiceNumber: number;
+  invoiceNumber?: number;
   date: string;
   weekNumber: number;
   billToName: string;
