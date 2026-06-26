@@ -98,71 +98,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
     const isProd = props.stage === "prod";
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
-    const invoicesTable = new dynamodb.Table(this, "InvoicesTable", {
-      tableName: `app-finances-${props.stage}-invoices`,
-      partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    invoicesTable.addGlobalSecondaryIndex({
-      indexName: "byInvoiceNumber",
-      partitionKey: { name: "invoiceNumber", type: dynamodb.AttributeType.NUMBER },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    invoicesTable.addGlobalSecondaryIndex({
-      indexName: "byStatusCreatedAt",
-      partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const invoiceSectionsTable = new dynamodb.Table(this, "InvoiceSectionsTable", {
-      tableName: `app-finances-${props.stage}-invoice-sections`,
-      partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sectionId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    invoiceSectionsTable.addGlobalSecondaryIndex({
-      indexName: "bySectionOrder",
-      partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "position", type: dynamodb.AttributeType.NUMBER },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const invoiceLineItemsTable = new dynamodb.Table(this, "InvoiceLineItemsTable", {
-      tableName: `app-finances-${props.stage}-invoice-line-items`,
-      partitionKey: { name: "sectionId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "lineItemId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    invoiceLineItemsTable.addGlobalSecondaryIndex({
-      indexName: "byLineItemOrder",
-      partitionKey: { name: "sectionId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "position", type: dynamodb.AttributeType.NUMBER },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const invoiceCountersTable = new dynamodb.Table(this, "InvoiceCountersTable", {
-      tableName: `app-finances-${props.stage}-invoice-counters`,
-      partitionKey: { name: "counterName", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
     const invoicePdfMetadataTable = new dynamodb.Table(this, "InvoicePdfMetadataTable", {
       tableName: `app-finances-${props.stage}-invoice-pdf-metadata`,
       partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
@@ -180,22 +115,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    const accountsTable = new dynamodb.Table(this, "AccountsTable", {
-      tableName: `app-finances-${props.stage}-accounts`,
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    accountsTable.addGlobalSecondaryIndex({
-      indexName: "byTypeCreatedAt",
-      partitionKey: { name: "type", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
     const userMembershipsTable = new dynamodb.Table(this, "UserMembershipsTable", {
       tableName: `app-finances-${props.stage}-user-memberships`,
       partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
@@ -210,40 +129,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       indexName: "byUserId",
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const clientsTable = new dynamodb.Table(this, "ClientsTable", {
-      tableName: `app-finances-${props.stage}-clients`,
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "clientId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    clientsTable.addGlobalSecondaryIndex({
-      indexName: "byClientName",
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "clientName", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const bankAccountsTable = new dynamodb.Table(this, "BankAccountsTable", {
-      tableName: `app-finances-${props.stage}-bank-accounts`,
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "bankAccountId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    bankAccountsTable.addGlobalSecondaryIndex({
-      indexName: "byUpdatedAt",
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "updatedAt", type: dynamodb.AttributeType.STRING },
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
@@ -349,10 +234,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       environment: {
         STAGE: props.stage,
         PDF_ENGINE: "playwright",
-        INVOICES_TABLE_NAME: invoicesTable.tableName,
-        INVOICE_SECTIONS_TABLE_NAME: invoiceSectionsTable.tableName,
-        INVOICE_LINE_ITEMS_TABLE_NAME: invoiceLineItemsTable.tableName,
-        INVOICE_COUNTERS_TABLE_NAME: invoiceCountersTable.tableName,
         INVOICE_PDF_METADATA_TABLE_NAME: invoicePdfMetadataTable.tableName,
         INVOICE_PDFS_BUCKET_NAME: invoicePdfsBucket.bucketName,
       },
@@ -362,10 +243,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       },
     });
 
-    invoicesTable.grantReadWriteData(generateInvoicePdfFn);
-    invoiceSectionsTable.grantReadWriteData(generateInvoicePdfFn);
-    invoiceLineItemsTable.grantReadWriteData(generateInvoicePdfFn);
-    invoiceCountersTable.grantReadWriteData(generateInvoicePdfFn);
     invoicePdfMetadataTable.grantReadWriteData(generateInvoicePdfFn);
     invoicePdfsBucket.grantReadWrite(generateInvoicePdfFn);
 
@@ -382,12 +259,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       },
     });
 
-    const invoicesDs = graphqlApi.addDynamoDbDataSource("InvoicesDs", invoicesTable);
-    const sectionsDs = graphqlApi.addDynamoDbDataSource("SectionsDs", invoiceSectionsTable);
-    const lineItemsDs = graphqlApi.addDynamoDbDataSource("LineItemsDs", invoiceLineItemsTable);
-    const accountsDs = graphqlApi.addDynamoDbDataSource("AccountsDs", accountsTable);
-    const clientsDs = graphqlApi.addDynamoDbDataSource("ClientsDs", clientsTable);
-    const bankAccountsDs = graphqlApi.addDynamoDbDataSource("BankAccountsDs", bankAccountsTable);
     const pdfLambdaDs = graphqlApi.addLambdaDataSource("PdfLambdaDs", generateInvoicePdfFn);
     const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!);
 
@@ -552,15 +423,8 @@ export class AppFinancesBackendStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "AppSyncApiId", { value: graphqlApi.apiId });
     new cdk.CfnOutput(this, "AppSyncGraphqlUrl", { value: graphqlApi.graphqlUrl });
-    new cdk.CfnOutput(this, "InvoicesTableName", { value: invoicesTable.tableName });
-    new cdk.CfnOutput(this, "InvoiceSectionsTableName", { value: invoiceSectionsTable.tableName });
-    new cdk.CfnOutput(this, "InvoiceLineItemsTableName", { value: invoiceLineItemsTable.tableName });
-    new cdk.CfnOutput(this, "InvoiceCountersTableName", { value: invoiceCountersTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfMetadataTableName", { value: invoicePdfMetadataTable.tableName });
-    new cdk.CfnOutput(this, "AccountsTableName", { value: accountsTable.tableName });
     new cdk.CfnOutput(this, "UserMembershipsTableName", { value: userMembershipsTable.tableName });
-    new cdk.CfnOutput(this, "ClientsTableName", { value: clientsTable.tableName });
-    new cdk.CfnOutput(this, "BankAccountsTableName", { value: bankAccountsTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfsBucketName", { value: invoicePdfsBucket.bucketName });
     new cdk.CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
     new cdk.CfnOutput(this, "CognitoUserPoolClientId", { value: userPoolClient.userPoolClientId });
