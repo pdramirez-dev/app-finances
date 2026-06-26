@@ -3,7 +3,9 @@ import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as rds from "aws-cdk-lib/aws-rds";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -259,6 +261,25 @@ export class AppFinancesBackendStack extends cdk.Stack {
         },
       ],
     });
+
+    const dbVpc = new ec2.Vpc(this, "DbVpc", { maxAzs: 2, natGateways: 0 });
+
+    const dbCluster = new rds.DatabaseCluster(this, "DomainDb", {
+      engine: rds.DatabaseClusterEngine.auroraPostgres({
+        version: rds.AuroraPostgresEngineVersion.VER_16_4,
+      }),
+      vpc: dbVpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      serverlessV2MinCapacity: 0,
+      serverlessV2MaxCapacity: 2,
+      enableDataApi: true,
+      defaultDatabaseName: "app_finances",
+      writer: rds.ClusterInstance.serverlessV2("Writer"),
+      removalPolicy,
+    });
+
+    new cdk.CfnOutput(this, "DomainDbClusterArn", { value: dbCluster.clusterArn });
+    new cdk.CfnOutput(this, "DomainDbSecretArn", { value: dbCluster.secret!.secretArn });
 
     const userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: `app-finances-${props.stage}-users`,
