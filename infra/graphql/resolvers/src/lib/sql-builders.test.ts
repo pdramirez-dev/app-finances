@@ -2,6 +2,7 @@ import { test, expect } from "vitest";
 import {
   listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
+  putClient, putBankAccount, putAccount,
 } from "./sql-builders";
 
 test("listInvoices scopes by claim accountId and ignores args.accountId", () => {
@@ -37,4 +38,28 @@ test("list/get builders for clients, bank, account scope by account", () => {
   expect(getClient("ACC_A", { clientId: "C" } as any).statement).toMatch(/account_id = :acc/i);
   expect(getBankAccount("ACC_A", { bankAccountId: "B" } as any).statement).toMatch(/account_id = :acc/i);
   expect(getAccount("ACC_A").statement).toMatch(/id = :acc/i);
+});
+
+test("putClient injects account_id from claim, not from input", () => {
+  const r = putClient("ACC_A", { input: { accountId: "ACC_B", name: "X" } } as any);
+  expect(r.statement).toMatch(/INSERT INTO clients/i);
+  expect(r.statement).toMatch(/ON CONFLICT/i);
+  expect(r.statement).toMatch(/WHERE clients\.account_id = :acc/i);
+  expect(r.params.acc).toBe("ACC_A");
+});
+
+test("putBankAccount injects account_id from claim, not from input", () => {
+  const r = putBankAccount("ACC_A", { input: { accountId: "ACC_B", beneficiaryName: "X", bankName: "B", currency: "USD" } } as any);
+  expect(r.statement).toMatch(/INSERT INTO bank_accounts/i);
+  expect(r.statement).toMatch(/ON CONFLICT/i);
+  expect(r.statement).toMatch(/WHERE bank_accounts\.account_id = :acc/i);
+  expect(r.params.acc).toBe("ACC_A");
+});
+
+test("putAccount upserts with account id from claim and returns *", () => {
+  const r = putAccount("ACC_A", { input: { type: "business", displayName: "Acme" } } as any);
+  expect(r.statement).toMatch(/INSERT INTO accounts/i);
+  expect(r.statement).toMatch(/ON CONFLICT/i);
+  expect(r.statement).toMatch(/RETURNING \*/i);
+  expect(r.params.acc).toBe("ACC_A");
 });

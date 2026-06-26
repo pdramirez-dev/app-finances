@@ -73,3 +73,49 @@ export function getBankAccount(acc: string, args: { bankAccountId: string }): Sq
 export function getAccount(acc: string): SqlRequest {
   return { statement: "SELECT * FROM accounts WHERE id = :acc", params: { acc } };
 }
+
+export function putClient(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `INSERT INTO clients (id, account_id, name, email, phone, address, tax_id, updated_at)
+                VALUES (COALESCE(:id, gen_random_uuid()), :acc, :name, :email, :phone, :address, :taxId, now())
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email,
+                  phone = EXCLUDED.phone, address = EXCLUDED.address, tax_id = EXCLUDED.tax_id, updated_at = now()
+                WHERE clients.account_id = :acc
+                RETURNING *`,
+    params: { id: i.clientId ?? null, acc, name: i.name, email: i.email ?? null,
+              phone: i.phone ?? null, address: i.address ?? null, taxId: i.taxId ?? null },
+  };
+}
+
+export function putBankAccount(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `INSERT INTO bank_accounts (id, account_id, beneficiary_name, bank_name,
+                  account_number_masked, routing_number_masked, iban_masked, swift_code, currency, country, updated_at)
+                VALUES (COALESCE(:id, gen_random_uuid()), :acc, :ben, :bank, :acct, :rout, :iban, :swift, :cur, :country, now())
+                ON CONFLICT (id) DO UPDATE SET beneficiary_name = EXCLUDED.beneficiary_name, bank_name = EXCLUDED.bank_name,
+                  account_number_masked = EXCLUDED.account_number_masked, routing_number_masked = EXCLUDED.routing_number_masked,
+                  iban_masked = EXCLUDED.iban_masked, swift_code = EXCLUDED.swift_code, currency = EXCLUDED.currency,
+                  country = EXCLUDED.country, updated_at = now()
+                WHERE bank_accounts.account_id = :acc
+                RETURNING *`,
+    params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
+              acct: i.accountNumberMasked ?? null, rout: i.routingNumberMasked ?? null, iban: i.ibanMasked ?? null,
+              swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
+  };
+}
+
+export function putAccount(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `INSERT INTO accounts (id, type, display_name, legal_name, tax_id, email, phone, address, updated_at)
+                VALUES (:acc, :type, :displayName, :legalName, :taxId, :email, :phone, :address, now())
+                ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, display_name = EXCLUDED.display_name,
+                  legal_name = EXCLUDED.legal_name, tax_id = EXCLUDED.tax_id, email = EXCLUDED.email,
+                  phone = EXCLUDED.phone, address = EXCLUDED.address, updated_at = now()
+                RETURNING *`,
+    params: { acc, type: i.type, displayName: i.displayName, legalName: i.legalName ?? null,
+              taxId: i.taxId ?? null, email: i.email ?? null, phone: i.phone ?? null, address: i.address ?? null },
+  };
+}

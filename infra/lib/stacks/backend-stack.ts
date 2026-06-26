@@ -412,11 +412,11 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("query-list-invoices.js"),
     });
 
-    accountsDs.createResolver("QueryGetAccountResolver", {
+    rdsDs.createResolver("QueryGetAccountResolver", {
       typeName: "Query",
       fieldName: "getAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-account.js"),
+      code: resolverFromFile("dist/query-get-account.js"),
     });
 
     rdsDs.createResolver("QueryListClientsResolver", {
@@ -433,11 +433,11 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("dist/query-get-client.js"),
     });
 
-    bankAccountsDs.createResolver("QueryGetBankAccountResolver", {
+    rdsDs.createResolver("QueryGetBankAccountResolver", {
       typeName: "Query",
       fieldName: "getBankAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-bank-account.js"),
+      code: resolverFromFile("dist/query-get-bank-account.js"),
     });
 
     invoicesDs.createResolver("MutationPutInvoiceResolver", {
@@ -447,32 +447,32 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("mutation-put-invoice.js"),
     });
 
-    accountsDs.createResolver("MutationPutAccountResolver", {
+    rdsDs.createResolver("MutationPutAccountResolver", {
       typeName: "Mutation",
       fieldName: "putAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-account.js"),
+      code: resolverFromFile("dist/mutation-put-account.js"),
     });
 
-    clientsDs.createResolver("MutationPutClientResolver", {
+    rdsDs.createResolver("MutationPutClientResolver", {
       typeName: "Mutation",
       fieldName: "putClient",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-client.js"),
+      code: resolverFromFile("dist/mutation-put-client.js"),
     });
 
-    clientsDs.createResolver("MutationDeleteClientResolver", {
+    rdsDs.createResolver("MutationDeleteClientResolver", {
       typeName: "Mutation",
       fieldName: "deleteClient",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-client.js"),
+      code: resolverFromFile("dist/mutation-delete-client.js"),
     });
 
-    bankAccountsDs.createResolver("MutationPutBankAccountResolver", {
+    rdsDs.createResolver("MutationPutBankAccountResolver", {
       typeName: "Mutation",
       fieldName: "putBankAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-bank-account.js"),
+      code: resolverFromFile("dist/mutation-put-bank-account.js"),
     });
 
     sectionsDs.createResolver("MutationPutInvoiceSectionResolver", {
