@@ -43,3 +43,4 @@ next-env.d.ts
 
 infra/node_modules
 infra/cdk.out
+infra/graphql/resolvers/dist

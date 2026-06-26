@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:resolvers": "node graphql/resolvers/build.mjs",
     "cdk:bootstrap": "cdk bootstrap",
     "cdk:synth": "cdk synth",
     "cdk:diff": "cdk diff",
@@ -17,7 +18,7 @@
     "aws-cdk": "^2.1027.0",
     "aws-cdk-lib": "^2.220.0",
     "constructs": "^10.4.2",
-    "esbuild": "^0.25.10",
+    "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
     "typescript": "^5.9.2",
     "vitest": "^4.1.9"
