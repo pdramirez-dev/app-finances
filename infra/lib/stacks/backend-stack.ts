@@ -389,6 +389,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     const clientsDs = graphqlApi.addDynamoDbDataSource("ClientsDs", clientsTable);
     const bankAccountsDs = graphqlApi.addDynamoDbDataSource("BankAccountsDs", bankAccountsTable);
     const pdfLambdaDs = graphqlApi.addLambdaDataSource("PdfLambdaDs", generateInvoicePdfFn);
+    const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!);
 
     invoicesDs.createResolver("QueryGetInvoiceResolver", {
       typeName: "Query",
@@ -418,18 +419,18 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("query-get-account.js"),
     });
 
-    clientsDs.createResolver("QueryListClientsResolver", {
+    rdsDs.createResolver("QueryListClientsResolver", {
       typeName: "Query",
       fieldName: "listClients",
       runtime: jsRuntime,
-      code: resolverFromFile("query-list-clients.js"),
+      code: resolverFromFile("dist/query-list-clients.js"),
     });
 
-    clientsDs.createResolver("QueryGetClientResolver", {
+    rdsDs.createResolver("QueryGetClientResolver", {
       typeName: "Query",
       fieldName: "getClient",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-client.js"),
+      code: resolverFromFile("dist/query-get-client.js"),
     });
 
     bankAccountsDs.createResolver("QueryGetBankAccountResolver", {
