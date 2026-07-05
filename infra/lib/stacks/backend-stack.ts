@@ -3,7 +3,9 @@ import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as rds from "aws-cdk-lib/aws-rds";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -96,71 +98,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
     const isProd = props.stage === "prod";
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
-    const invoicesTable = new dynamodb.Table(this, "InvoicesTable", {
-      tableName: `app-finances-${props.stage}-invoices`,
-      partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    invoicesTable.addGlobalSecondaryIndex({
-      indexName: "byInvoiceNumber",
-      partitionKey: { name: "invoiceNumber", type: dynamodb.AttributeType.NUMBER },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    invoicesTable.addGlobalSecondaryIndex({
-      indexName: "byStatusCreatedAt",
-      partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const invoiceSectionsTable = new dynamodb.Table(this, "InvoiceSectionsTable", {
-      tableName: `app-finances-${props.stage}-invoice-sections`,
-      partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sectionId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    invoiceSectionsTable.addGlobalSecondaryIndex({
-      indexName: "bySectionOrder",
-      partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "position", type: dynamodb.AttributeType.NUMBER },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const invoiceLineItemsTable = new dynamodb.Table(this, "InvoiceLineItemsTable", {
-      tableName: `app-finances-${props.stage}-invoice-line-items`,
-      partitionKey: { name: "sectionId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "lineItemId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    invoiceLineItemsTable.addGlobalSecondaryIndex({
-      indexName: "byLineItemOrder",
-      partitionKey: { name: "sectionId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "position", type: dynamodb.AttributeType.NUMBER },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const invoiceCountersTable = new dynamodb.Table(this, "InvoiceCountersTable", {
-      tableName: `app-finances-${props.stage}-invoice-counters`,
-      partitionKey: { name: "counterName", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
     const invoicePdfMetadataTable = new dynamodb.Table(this, "InvoicePdfMetadataTable", {
       tableName: `app-finances-${props.stage}-invoice-pdf-metadata`,
       partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
@@ -175,22 +112,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       indexName: "byGeneratedAt",
       partitionKey: { name: "stage", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "generatedAt", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const accountsTable = new dynamodb.Table(this, "AccountsTable", {
-      tableName: `app-finances-${props.stage}-accounts`,
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    accountsTable.addGlobalSecondaryIndex({
-      indexName: "byTypeCreatedAt",
-      partitionKey: { name: "type", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
@@ -211,40 +132,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    const clientsTable = new dynamodb.Table(this, "ClientsTable", {
-      tableName: `app-finances-${props.stage}-clients`,
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "clientId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    clientsTable.addGlobalSecondaryIndex({
-      indexName: "byClientName",
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "clientName", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    const bankAccountsTable = new dynamodb.Table(this, "BankAccountsTable", {
-      tableName: `app-finances-${props.stage}-bank-accounts`,
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "bankAccountId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      deletionProtection: isProd,
-      removalPolicy,
-    });
-
-    bankAccountsTable.addGlobalSecondaryIndex({
-      indexName: "byUpdatedAt",
-      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "updatedAt", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
     const invoicePdfsBucket = new s3.Bucket(this, "InvoicePdfsBucket", {
       encryption: s3.BucketEncryption.S3_MANAGED,
       versioned: true,
@@ -260,6 +147,26 @@ export class AppFinancesBackendStack extends cdk.Stack {
       ],
     });
 
+    const dbVpc = new ec2.Vpc(this, "DbVpc", { maxAzs: 2, natGateways: 0 });
+
+    const dbCluster = new rds.DatabaseCluster(this, "DomainDb", {
+      engine: rds.DatabaseClusterEngine.auroraPostgres({
+        version: rds.AuroraPostgresEngineVersion.VER_16_4,
+      }),
+      vpc: dbVpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      serverlessV2MinCapacity: 0,
+      serverlessV2MaxCapacity: 2,
+      enableDataApi: true,
+      defaultDatabaseName: "app_finances",
+      writer: rds.ClusterInstance.serverlessV2("Writer"),
+      backup: { retention: cdk.Duration.days(7) },
+      removalPolicy,
+    });
+
+    new cdk.CfnOutput(this, "DomainDbClusterArn", { value: dbCluster.clusterArn });
+    new cdk.CfnOutput(this, "DomainDbSecretArn", { value: dbCluster.secret!.secretArn });
+
     const userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: `app-finances-${props.stage}-users`,
       selfSignUpEnabled: false,
@@ -267,6 +174,9 @@ export class AppFinancesBackendStack extends cdk.Stack {
       standardAttributes: {
         email: { required: true, mutable: false },
         fullname: { required: false, mutable: true },
+      },
+      customAttributes: {
+        accountId: new cognito.StringAttribute({ mutable: false }),
       },
       passwordPolicy: {
         minLength: 12,
@@ -324,10 +234,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       environment: {
         STAGE: props.stage,
         PDF_ENGINE: "playwright",
-        INVOICES_TABLE_NAME: invoicesTable.tableName,
-        INVOICE_SECTIONS_TABLE_NAME: invoiceSectionsTable.tableName,
-        INVOICE_LINE_ITEMS_TABLE_NAME: invoiceLineItemsTable.tableName,
-        INVOICE_COUNTERS_TABLE_NAME: invoiceCountersTable.tableName,
         INVOICE_PDF_METADATA_TABLE_NAME: invoicePdfMetadataTable.tableName,
         INVOICE_PDFS_BUCKET_NAME: invoicePdfsBucket.bucketName,
       },
@@ -337,10 +243,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       },
     });
 
-    invoicesTable.grantReadWriteData(generateInvoicePdfFn);
-    invoiceSectionsTable.grantReadWriteData(generateInvoicePdfFn);
-    invoiceLineItemsTable.grantReadWriteData(generateInvoicePdfFn);
-    invoiceCountersTable.grantReadWriteData(generateInvoicePdfFn);
     invoicePdfMetadataTable.grantReadWriteData(generateInvoicePdfFn);
     invoicePdfsBucket.grantReadWrite(generateInvoicePdfFn);
 
@@ -357,152 +259,147 @@ export class AppFinancesBackendStack extends cdk.Stack {
       },
     });
 
-    const invoicesDs = graphqlApi.addDynamoDbDataSource("InvoicesDs", invoicesTable);
-    const sectionsDs = graphqlApi.addDynamoDbDataSource("SectionsDs", invoiceSectionsTable);
-    const lineItemsDs = graphqlApi.addDynamoDbDataSource("LineItemsDs", invoiceLineItemsTable);
-    const accountsDs = graphqlApi.addDynamoDbDataSource("AccountsDs", accountsTable);
-    const clientsDs = graphqlApi.addDynamoDbDataSource("ClientsDs", clientsTable);
-    const bankAccountsDs = graphqlApi.addDynamoDbDataSource("BankAccountsDs", bankAccountsTable);
     const pdfLambdaDs = graphqlApi.addLambdaDataSource("PdfLambdaDs", generateInvoicePdfFn);
+    const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!);
 
-    invoicesDs.createResolver("QueryGetInvoiceResolver", {
+    rdsDs.createResolver("QueryGetInvoiceResolver", {
       typeName: "Query",
       fieldName: "getInvoice",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-invoice.js"),
+      code: resolverFromFile("dist/query-get-invoice.js"),
     });
 
-    invoicesDs.createResolver("QueryGetInvoiceByNumberResolver", {
+    rdsDs.createResolver("QueryGetInvoiceByNumberResolver", {
       typeName: "Query",
       fieldName: "getInvoiceByNumber",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-invoice-by-number.js"),
+      code: resolverFromFile("dist/query-get-invoice-by-number.js"),
     });
 
-    invoicesDs.createResolver("QueryListInvoicesResolver", {
+    rdsDs.createResolver("QueryListInvoicesResolver", {
       typeName: "Query",
       fieldName: "listInvoices",
       runtime: jsRuntime,
-      code: resolverFromFile("query-list-invoices.js"),
+      code: resolverFromFile("dist/query-list-invoices.js"),
     });
 
-    accountsDs.createResolver("QueryGetAccountResolver", {
+    rdsDs.createResolver("QueryGetAccountResolver", {
       typeName: "Query",
       fieldName: "getAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-account.js"),
+      code: resolverFromFile("dist/query-get-account.js"),
     });
 
-    clientsDs.createResolver("QueryListClientsResolver", {
+    rdsDs.createResolver("QueryListClientsResolver", {
       typeName: "Query",
       fieldName: "listClients",
       runtime: jsRuntime,
-      code: resolverFromFile("query-list-clients.js"),
+      code: resolverFromFile("dist/query-list-clients.js"),
     });
 
-    clientsDs.createResolver("QueryGetClientResolver", {
+    rdsDs.createResolver("QueryGetClientResolver", {
       typeName: "Query",
       fieldName: "getClient",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-client.js"),
+      code: resolverFromFile("dist/query-get-client.js"),
     });
 
-    bankAccountsDs.createResolver("QueryGetBankAccountResolver", {
+    rdsDs.createResolver("QueryGetBankAccountResolver", {
       typeName: "Query",
       fieldName: "getBankAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("query-get-bank-account.js"),
+      code: resolverFromFile("dist/query-get-bank-account.js"),
     });
 
-    invoicesDs.createResolver("MutationPutInvoiceResolver", {
+    rdsDs.createResolver("MutationPutInvoiceResolver", {
       typeName: "Mutation",
       fieldName: "putInvoice",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-invoice.js"),
+      code: resolverFromFile("dist/mutation-put-invoice.js"),
     });
 
-    accountsDs.createResolver("MutationPutAccountResolver", {
+    rdsDs.createResolver("MutationPutAccountResolver", {
       typeName: "Mutation",
       fieldName: "putAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-account.js"),
+      code: resolverFromFile("dist/mutation-put-account.js"),
     });
 
-    clientsDs.createResolver("MutationPutClientResolver", {
+    rdsDs.createResolver("MutationPutClientResolver", {
       typeName: "Mutation",
       fieldName: "putClient",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-client.js"),
+      code: resolverFromFile("dist/mutation-put-client.js"),
     });
 
-    clientsDs.createResolver("MutationDeleteClientResolver", {
+    rdsDs.createResolver("MutationDeleteClientResolver", {
       typeName: "Mutation",
       fieldName: "deleteClient",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-client.js"),
+      code: resolverFromFile("dist/mutation-delete-client.js"),
     });
 
-    bankAccountsDs.createResolver("MutationPutBankAccountResolver", {
+    rdsDs.createResolver("MutationPutBankAccountResolver", {
       typeName: "Mutation",
       fieldName: "putBankAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-bank-account.js"),
+      code: resolverFromFile("dist/mutation-put-bank-account.js"),
     });
 
-    sectionsDs.createResolver("MutationPutInvoiceSectionResolver", {
+    rdsDs.createResolver("MutationPutInvoiceSectionResolver", {
       typeName: "Mutation",
       fieldName: "putInvoiceSection",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-invoice-section.js"),
+      code: resolverFromFile("dist/mutation-put-invoice-section.js"),
     });
 
-    lineItemsDs.createResolver("MutationPutInvoiceLineItemResolver", {
+    rdsDs.createResolver("MutationPutInvoiceLineItemResolver", {
       typeName: "Mutation",
       fieldName: "putInvoiceLineItem",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-put-invoice-line-item.js"),
+      code: resolverFromFile("dist/mutation-put-invoice-line-item.js"),
     });
 
-    sectionsDs.createResolver("MutationDeleteInvoiceSectionResolver", {
+    rdsDs.createResolver("MutationDeleteInvoiceSectionResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoiceSection",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-invoice-section.js"),
+      code: resolverFromFile("dist/mutation-delete-invoice-section.js"),
     });
 
-    lineItemsDs.createResolver("MutationDeleteInvoiceLineItemResolver", {
+    rdsDs.createResolver("MutationDeleteInvoiceLineItemResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoiceLineItem",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-invoice-line-item.js"),
+      code: resolverFromFile("dist/mutation-delete-invoice-line-item.js"),
     });
 
-    invoicesDs.createResolver("MutationUpdateInvoiceStatusResolver", {
+    rdsDs.createResolver("MutationUpdateInvoiceStatusResolver", {
       typeName: "Mutation",
       fieldName: "updateInvoiceStatus",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-update-invoice-status.js"),
+      code: resolverFromFile("dist/mutation-update-invoice-status.js"),
     });
 
-    invoicesDs.createResolver("MutationDeleteInvoiceResolver", {
+    rdsDs.createResolver("MutationDeleteInvoiceResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoice",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-delete-invoice.js"),
+      code: resolverFromFile("dist/mutation-delete-invoice.js"),
     });
 
-    sectionsDs.createResolver("InvoiceSectionsResolver", {
+    rdsDs.createResolver("InvoiceSectionsResolver", {
       typeName: "Invoice",
       fieldName: "sections",
       runtime: jsRuntime,
-      code: resolverFromFile("invoice-sections.js"),
+      code: resolverFromFile("dist/invoice-sections.js"),
     });
 
-    lineItemsDs.createResolver("InvoiceSectionLineItemsResolver", {
+    rdsDs.createResolver("InvoiceSectionLineItemsResolver", {
       typeName: "InvoiceSection",
       fieldName: "lineItems",
       runtime: jsRuntime,
-      code: resolverFromFile("invoice-section-line-items.js"),
+      code: resolverFromFile("dist/invoice-section-line-items.js"),
     });
 
     pdfLambdaDs.createResolver("MutationRequestInvoicePdfResolver", {
@@ -526,15 +423,8 @@ export class AppFinancesBackendStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "AppSyncApiId", { value: graphqlApi.apiId });
     new cdk.CfnOutput(this, "AppSyncGraphqlUrl", { value: graphqlApi.graphqlUrl });
-    new cdk.CfnOutput(this, "InvoicesTableName", { value: invoicesTable.tableName });
-    new cdk.CfnOutput(this, "InvoiceSectionsTableName", { value: invoiceSectionsTable.tableName });
-    new cdk.CfnOutput(this, "InvoiceLineItemsTableName", { value: invoiceLineItemsTable.tableName });
-    new cdk.CfnOutput(this, "InvoiceCountersTableName", { value: invoiceCountersTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfMetadataTableName", { value: invoicePdfMetadataTable.tableName });
-    new cdk.CfnOutput(this, "AccountsTableName", { value: accountsTable.tableName });
     new cdk.CfnOutput(this, "UserMembershipsTableName", { value: userMembershipsTable.tableName });
-    new cdk.CfnOutput(this, "ClientsTableName", { value: clientsTable.tableName });
-    new cdk.CfnOutput(this, "BankAccountsTableName", { value: bankAccountsTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfsBucketName", { value: invoicePdfsBucket.bucketName });
     new cdk.CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
     new cdk.CfnOutput(this, "CognitoUserPoolClientId", { value: userPoolClient.userPoolClientId });

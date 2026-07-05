@@ -18,10 +18,10 @@ type Query {
   getInvoice(invoiceId: ID!): Invoice
   getInvoiceByNumber(invoiceNumber: Int!): Invoice
   listInvoices(status: InvoiceStatus, limit: Int, nextToken: String): InvoiceConnection!
-  getAccount(accountId: ID!): Account
-  listClients(accountId: ID!, limit: Int, nextToken: String): ClientConnection!
-  getClient(accountId: ID!, clientId: ID!): Client
-  getBankAccount(accountId: ID!, bankAccountId: ID!): BankAccount
+  getAccount: Account
+  listClients(limit: Int, nextToken: String): ClientConnection!
+  getClient(clientId: ID!): Client
+  getBankAccount(bankAccountId: ID!): BankAccount
 }
 
 type Mutation {
@@ -35,7 +35,7 @@ type Mutation {
   requestInvoicePdf(invoiceId: ID!): PdfRequestResult!
   putAccount(input: PutAccountInput!): Account!
   putClient(input: PutClientInput!): Client!
-  deleteClient(accountId: ID!, clientId: ID!): Boolean!
+  deleteClient(clientId: ID!): Boolean!
   putBankAccount(input: PutBankAccountInput!): BankAccount!
 }
 
@@ -132,7 +132,7 @@ type BankAccount {
 
 input PutInvoiceInput {
   invoiceId: ID
-  invoiceNumber: Int!
+  invoiceNumber: Int
   date: AWSDate!
   weekNumber: Int!
   billToName: String!
@@ -163,7 +163,6 @@ input PutInvoiceLineItemInput {
 }
 
 input PutAccountInput {
-  accountId: ID
   type: AccountType!
   displayName: String!
   legalName: String
@@ -174,7 +173,6 @@ input PutAccountInput {
 }
 
 input PutClientInput {
-  accountId: ID!
   clientId: ID
   name: String!
   email: AWSEmail
@@ -184,7 +182,6 @@ input PutClientInput {
 }
 
 input PutBankAccountInput {
-  accountId: ID!
   bankAccountId: ID
   beneficiaryName: String!
   bankName: String!

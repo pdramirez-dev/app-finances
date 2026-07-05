@@ -4,21 +4,28 @@
   "version": "0.1.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:resolvers": "node graphql/resolvers/build.mjs",
     "cdk:bootstrap": "cdk bootstrap",
     "cdk:synth": "cdk synth",
     "cdk:diff": "cdk diff",
     "cdk:deploy": "cdk deploy --all",
     "cdk:deploy:dev": "cdk deploy AppFinances-Backend-dev AppFinances-Frontend-dev -c stages=dev",
-    "cdk:deploy:prod": "cdk deploy AppFinances-Backend-prod AppFinances-Frontend-prod -c stages=prod"
+    "cdk:deploy:prod": "cdk deploy AppFinances-Backend-prod AppFinances-Frontend-prod -c stages=prod",
+    "db:migrate:aurora": "tsx scripts/apply-migrations-aurora.ts"
   },
   "devDependencies": {
+    "@aws-appsync/utils": "^2.1.1",
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "^20.19.17",
     "aws-cdk": "^2.1027.0",
     "aws-cdk-lib": "^2.220.0",
     "constructs": "^10.4.2",
-    "esbuild": "^0.25.10",
+    "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "@aws-sdk/client-rds-data": "^3.1075.0"
   }
 }

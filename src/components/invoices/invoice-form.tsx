@@ -39,11 +39,7 @@ function parseNumeric(value: string) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-export function InvoiceForm({
-  nextInvoiceNumber,
-}: {
-  nextInvoiceNumber: number;
-}) {
+export function InvoiceForm() {
   const [state, formAction, isPending] = useActionState(createInvoiceAction, initialState);
   const [sections, setSections] = useState<EditableSection[]>(
     defaultSectionTemplate.map((section) => ({
@@ -156,10 +152,6 @@ export function InvoiceForm({
           <CardTitle className="brand-heading text-xl">Datos principales</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="invoiceNumber">Invoice Number</Label>
-            <Input id="invoiceNumber" name="invoiceNumber" type="number" min={1} defaultValue={nextInvoiceNumber} required />
-          </div>
           <div className="space-y-2">
             <Label htmlFor="weekNumber">Week Number</Label>
             <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} required />

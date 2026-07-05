@@ -3,12 +3,10 @@ import { Sparkles } from "lucide-react";
 
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { Button } from "@/components/ui/button";
-import { getNextInvoiceNumber } from "@/lib/appsync/invoices";
 import { requireAuth } from "@/lib/require-auth";
 
 export default async function NewInvoicePage() {
   await requireAuth();
-  const nextInvoiceNumber = await getNextInvoiceNumber();
 
   return (
     <div className="space-y-6">
@@ -28,7 +26,7 @@ export default async function NewInvoicePage() {
         </Button>
       </div>
 
-      <InvoiceForm nextInvoiceNumber={nextInvoiceNumber} />
+      <InvoiceForm />
     </div>
   );
 }
