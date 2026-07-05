@@ -336,32 +336,11 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("dist/mutation-put-invoice.js"),
     });
 
-    rdsDs.createResolver("MutationPutAccountResolver", {
-      typeName: "Mutation",
-      fieldName: "putAccount",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-put-account.js"),
-    });
-
     rdsDs.createResolver("MutationPutClientResolver", {
       typeName: "Mutation",
       fieldName: "putClient",
       runtime: jsRuntime,
       code: resolverFromFile("dist/mutation-put-client.js"),
-    });
-
-    rdsDs.createResolver("MutationDeleteClientResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteClient",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-delete-client.js"),
-    });
-
-    rdsDs.createResolver("MutationPutBankAccountResolver", {
-      typeName: "Mutation",
-      fieldName: "putBankAccount",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-put-bank-account.js"),
     });
 
     rdsDs.createResolver("MutationPutInvoiceSectionResolver", {
@@ -392,13 +371,6 @@ export class AppFinancesBackendStack extends cdk.Stack {
       code: resolverFromFile("dist/mutation-delete-invoice-line-item.js"),
     });
 
-    rdsDs.createResolver("MutationUpdateInvoiceStatusResolver", {
-      typeName: "Mutation",
-      fieldName: "updateInvoiceStatus",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-update-invoice-status.js"),
-    });
-
     rdsDs.createResolver("MutationDeleteInvoiceResolver", {
       typeName: "Mutation",
       fieldName: "deleteInvoice",
@@ -418,6 +390,81 @@ export class AppFinancesBackendStack extends cdk.Stack {
       fieldName: "lineItems",
       runtime: jsRuntime,
       code: resolverFromFile("dist/invoice-section-line-items.js"),
+    });
+
+    // Audit log pipeline resolvers for sensitive mutations
+    const auditDs = graphqlApi.addDynamoDbDataSource("AuditLogDs", auditLogTable);
+
+    const auditWriteFn = new appsync.AppsyncFunction(this, "AuditWriteFn", {
+      api: graphqlApi,
+      dataSource: auditDs,
+      name: "AuditWriteFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/fn-audit-write.js"),
+    });
+
+    const putAccountRdsFn = new appsync.AppsyncFunction(this, "PutAccountRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "PutAccountRdsFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-put-account.js"),
+    });
+
+    graphqlApi.createResolver("MutationPutAccountResolver", {
+      typeName: "Mutation",
+      fieldName: "putAccount",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-put-account.js"),
+      pipelineConfig: [putAccountRdsFn, auditWriteFn],
+    });
+
+    const putBankAccountRdsFn = new appsync.AppsyncFunction(this, "PutBankAccountRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "PutBankAccountRdsFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-put-bank-account.js"),
+    });
+
+    graphqlApi.createResolver("MutationPutBankAccountResolver", {
+      typeName: "Mutation",
+      fieldName: "putBankAccount",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-put-bank-account.js"),
+      pipelineConfig: [putBankAccountRdsFn, auditWriteFn],
+    });
+
+    const deleteClientRdsFn = new appsync.AppsyncFunction(this, "DeleteClientRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "DeleteClientRdsFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-delete-client.js"),
+    });
+
+    graphqlApi.createResolver("MutationDeleteClientResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteClient",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-delete-client.js"),
+      pipelineConfig: [deleteClientRdsFn, auditWriteFn],
+    });
+
+    const updateInvoiceStatusRdsFn = new appsync.AppsyncFunction(this, "UpdateInvoiceStatusRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "UpdateInvoiceStatusRdsFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-update-invoice-status.js"),
+    });
+
+    graphqlApi.createResolver("MutationUpdateInvoiceStatusResolver", {
+      typeName: "Mutation",
+      fieldName: "updateInvoiceStatus",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-update-invoice-status.js"),
+      pipelineConfig: [updateInvoiceStatusRdsFn, auditWriteFn],
     });
 
     pdfLambdaDs.createResolver("MutationRequestInvoicePdfResolver", {
