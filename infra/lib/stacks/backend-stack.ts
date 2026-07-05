@@ -132,6 +132,24 @@ export class AppFinancesBackendStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    const auditLogTable = new dynamodb.Table(this, "AuditLogTable", {
+      tableName: `app-finances-${props.stage}-audit-log`,
+      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "ttl",
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      deletionProtection: isProd,
+      removalPolicy,
+    });
+
+    auditLogTable.addGlobalSecondaryIndex({
+      indexName: "byEntity",
+      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "entityKey", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     const invoicePdfsBucket = new s3.Bucket(this, "InvoicePdfsBucket", {
       encryption: s3.BucketEncryption.S3_MANAGED,
       versioned: true,
@@ -425,6 +443,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     new cdk.CfnOutput(this, "AppSyncGraphqlUrl", { value: graphqlApi.graphqlUrl });
     new cdk.CfnOutput(this, "InvoicePdfMetadataTableName", { value: invoicePdfMetadataTable.tableName });
     new cdk.CfnOutput(this, "UserMembershipsTableName", { value: userMembershipsTable.tableName });
+    new cdk.CfnOutput(this, "AuditLogTableName", { value: auditLogTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfsBucketName", { value: invoicePdfsBucket.bucketName });
     new cdk.CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
     new cdk.CfnOutput(this, "CognitoUserPoolClientId", { value: userPoolClient.userPoolClientId });

@@ -22,11 +22,11 @@ test("provisions an Aurora Serverless v2 Postgres cluster with Data API", () => 
   });
 });
 
-test("domain DynamoDB tables are removed; only the two kept tables remain", () => {
+test("domain DynamoDB tables are removed; only the three kept tables remain", () => {
   const t = synth();
   // After the Postgres migration, the only DynamoDB tables left are the PDF
-  // metadata table and user-memberships. The 7 domain tables are gone.
-  t.resourceCountIs("AWS::DynamoDB::Table", 2);
+  // metadata table, user-memberships, and audit-log. The 7 domain tables are gone.
+  t.resourceCountIs("AWS::DynamoDB::Table", 3);
   const tables = t.findResources("AWS::DynamoDB::Table");
   const names = Object.values(tables).map((r: any) => r.Properties.TableName);
   for (const removed of [
@@ -58,6 +58,20 @@ test("user pool defines an immutable custom:accountId attribute", () => {
         AttributeDataType: "String",
         Mutable: false,
       }),
+    ]),
+  });
+});
+
+test("provisions the audit-log table with byEntity GSI and TTL", () => {
+  const t = synth();
+  t.hasResourceProperties("AWS::DynamoDB::Table", {
+    KeySchema: Match.arrayWith([
+      Match.objectLike({ AttributeName: "accountId", KeyType: "HASH" }),
+      Match.objectLike({ AttributeName: "sk", KeyType: "RANGE" }),
+    ]),
+    TimeToLiveSpecification: Match.objectLike({ AttributeName: "ttl", Enabled: true }),
+    GlobalSecondaryIndexes: Match.arrayWith([
+      Match.objectLike({ IndexName: "byEntity" }),
     ]),
   });
 });
