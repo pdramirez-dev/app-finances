@@ -60,5 +60,14 @@ verified manually below.
 ## Notes / known limitations
 
 - MVP audits the resulting (`after`) state + action. Capturing the previous
-  value would require an extra read — deferred.
+  value would require an extra read — deferred. For `deleteClient` the RDS
+  function returns `true`, so its audit entry carries `entityKey=CLIENT#<id>`
+  and action but no row snapshot.
 - `accountId` and `actor` always come from Cognito claims, never client input.
+- **Audit-write happens after the RDS mutation commits.** If the Postgres write
+  succeeds but the DynamoDB `PutItem` then fails, the client receives an error
+  even though the domain change is already persisted (and not rolled back), and
+  no audit row is written. This is the trade-off of the "audit-second" ordering
+  (which guarantees no orphan audit entries for failed mutations); a missing
+  audit row for a committed change must be detected operationally, not via the
+  GraphQL response.
