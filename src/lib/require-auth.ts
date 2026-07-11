@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 export async function requireAuth() {
   const session = await auth();
 
-  if (!session?.user || !session.idToken) {
+  if (!session?.user || session.error === "RefreshAccessTokenError") {
     redirect("/login");
   }
 

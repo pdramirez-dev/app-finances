@@ -1,7 +1,19 @@
 export type SqlRequest = { statement: string; params: Record<string, unknown> };
 
+export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const normalized = String(value).trim();
+  const visible = normalized.replace(/[*xX•\s.-]/g, "");
+
+  if (!/[*xX•]/.test(normalized) || visible.length > maxVisible) {
+    throw new Error("Bank identifiers must be masked and expose only their final characters");
+  }
+
+  return normalized;
+}
+
 const INVOICE_COLS =
-  `id AS "invoiceId", invoice_number AS "invoiceNumber", date, week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", date, week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SECTION_COLS =
   `id AS "sectionId", invoice_id AS "invoiceId", title, position, total`;
@@ -116,7 +128,9 @@ export function putBankAccount(acc: string, args: { input: any }): SqlRequest {
                 WHERE bank_accounts.account_id = :acc
                 RETURNING ${BANK_ACCOUNT_COLS}`,
     params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
-              acct: i.accountNumberMasked ?? null, rout: i.routingNumberMasked ?? null, iban: i.ibanMasked ?? null,
+              acct: normalizeMaskedBankValue(i.accountNumberMasked),
+              rout: normalizeMaskedBankValue(i.routingNumberMasked),
+              iban: normalizeMaskedBankValue(i.ibanMasked, 6),
               swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
   };
 }
@@ -138,14 +152,20 @@ export function putAccount(acc: string, args: { input: any }): SqlRequest {
 export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest {
   const i = args.input;
   return {
-    statement: `WITH n AS (
-        INSERT INTO invoice_counters (account_id, last_invoice_number) VALUES (:acc, 1)
+    statement: `WITH valid_client AS (
+        SELECT CAST(:clientId AS uuid) AS id
+        WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
+          SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
+        )
+      ), n AS (
+        INSERT INTO invoice_counters (account_id, last_invoice_number)
+        SELECT :acc, 1 FROM valid_client
         ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
         RETURNING last_invoice_number)
       INSERT INTO invoices (account_id, client_id, invoice_number, date, week_number, bill_to_name,
         bill_to_address, project, currency, notes, grand_total, status)
-      SELECT :acc, :clientId, n.last_invoice_number, :date, :week, :billName, :billAddr, :project,
-        :currency, :notes, :grandTotal, :status FROM n
+      SELECT :acc, valid_client.id, n.last_invoice_number, :date, :week, :billName, :billAddr, :project,
+        :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
       RETURNING ${INVOICE_COLS}`,
     params: { acc, clientId: i.clientId ?? null, date: i.date, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,

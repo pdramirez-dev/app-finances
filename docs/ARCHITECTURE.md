@@ -15,7 +15,7 @@ Este documento define el modelo de arquitectura para evolucionar `app-finances` 
 
 ## Principios técnicos
 
-- Mantener arquitectura serverless actual: Next.js + NextAuth + Cognito + AppSync + DynamoDB + S3.
+- Mantener arquitectura serverless: Next.js + NextAuth + Cognito + AppSync + Aurora Serverless v2 + DynamoDB + S3.
 - Implementar aislamiento multi-tenant por `accountId` en todas las entidades de dominio.
 - Priorizar `Query` por PK/GSI y evitar `Scan` en flujos de negocio.
 - Cifrar y enmascarar datos bancarios sensibles.
@@ -26,7 +26,9 @@ Este documento define el modelo de arquitectura para evolucionar `app-finances` 
   - Next.js App Router.
   - NextAuth v5 con Cognito.
 - Backend:
-  - AppSync GraphQL (auth Cognito User Pool).
+  - AppSync GraphQL (exclusivamente auth Cognito User Pool).
+  - Aurora PostgreSQL para entidades de dominio y numeración transaccional.
+  - DynamoDB para membresías y auditoría append-only.
   - Lambda para generación de PDF.
   - DynamoDB multi-tabla.
 - AuthN/AuthZ:
@@ -46,23 +48,16 @@ Este documento define el modelo de arquitectura para evolucionar `app-finances` 
 - `Invoice` (existente, a migrar)
   - Agregar `accountId` y `clientId` para aislamiento por tenant.
 
-## Diseño DynamoDB (target)
+## Persistencia actual
 
-- `accounts`
-  - PK: `accountId`
-  - GSI: `byTypeCreatedAt` (`type`, `createdAt`)
-- `user-memberships`
+- Aurora PostgreSQL:
+  - `accounts`, `clients`, `bank_accounts`, `invoices`, `invoice_sections`, `invoice_line_items` e `invoice_counters`.
+  - Todos los accesos se filtran por `account_id`; invoices valida además la relación compuesta con clients.
+  - Índices `invoices_by_account_created`, `invoices_by_account_status` y `clients_by_account_name` evitan `Scan`.
+- DynamoDB `user-memberships`:
   - PK: `accountId`, SK: `userId`
   - GSI: `byUserId` (`userId`, `accountId`)
-- `clients`
-  - PK: `accountId`, SK: `clientId`
-  - GSI: `byClientName` (`accountId`, `clientName`)
-- `bank-accounts`
-  - PK: `accountId`, SK: `bankAccountId`
-  - GSI: `byUpdatedAt` (`accountId`, `updatedAt`)
-- `invoices` (existente)
-  - Hoy usa `invoiceId` como PK.
-  - Evolución propuesta: incorporar índice por cuenta (`accountId`, `createdAt` o `status+createdAt`).
+- DynamoDB `audit-log`: PK `accountId`, SK temporal, TTL y GSI `byEntity`.
 
 ## Flujo de autorización (target)
 
@@ -70,7 +65,8 @@ Este documento define el modelo de arquitectura para evolucionar `app-finances` 
 2. Frontend obtiene token (NextAuth).
 3. En cada operación GraphQL, backend identifica `userId` desde claims.
 4. Backend valida membresía activa (`UserMembership`) para el `accountId` de la operación.
-5. Solo entonces ejecuta operación sobre `Client`, `BankAccount`, `Invoice`.
+5. Una función pipeline rechaza membresías ausentes/suspendidas y reserva cambios administrativos para `OWNER|ADMIN`.
+6. Solo entonces ejecuta la operación tenant-scoped sobre Aurora, auditoría o PDF.
 
 ## Seguridad de datos bancarios
 
@@ -78,17 +74,12 @@ Este documento define el modelo de arquitectura para evolucionar `app-finances` 
 - Guardar versión cifrada (KMS) y versión enmascarada para UI.
 - Registrar auditoría de cambios en datos bancarios.
 
-## Fases de implementación
+## Estado de implementación
 
-- Fase 1 (actual):
-  - Base documental.
-  - Crear tablas multi-tenant nuevas en CDK (`accounts`, `user-memberships`, `clients`, `bank-accounts`).
-- Fase 2:
-  - Schema GraphQL + resolvers para Accounts/Clients/BankAccounts.
-  - Resolvers con validación de membresía.
-- Fase 3:
-  - Migración de invoices para `accountId`/`clientId`.
-  - Refactor de queries de invoices para evitar `Scan`.
+- Fase 1: completada — esquema, Aurora, harness y Cognito multi-tenant.
+- Fase 2: completada — resolvers Accounts/Clients/BankAccounts y validación de membresía.
+- Fase 3: completada — invoices con `accountId`/`clientId`, índices y aislamiento cross-tenant.
+- Fase de seguridad backend: completada en código — audit log, refresh de tokens, backfill y alarmas; requiere despliegue/cutover por entorno.
 - Fase 4:
   - UI de perfil de cuenta, clientes y datos bancarios.
   - Pruebas E2E de autorización por tenant.

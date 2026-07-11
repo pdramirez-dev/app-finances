@@ -16,6 +16,8 @@ type CognitoSuccessResult = {
   kind: "success";
   accessToken: string;
   idToken: string;
+  refreshToken: string;
+  expiresIn: number;
   user: {
     id: string;
     email: string;
@@ -156,6 +158,8 @@ function normalizeAuthResult(email: string, payload: {
   AuthenticationResult?: {
     AccessToken?: string;
     IdToken?: string;
+    RefreshToken?: string;
+    ExpiresIn?: number;
   };
   ChallengeName?: string;
   ChallengeParameters?: Record<string, string>;
@@ -185,6 +189,8 @@ function normalizeAuthResult(email: string, payload: {
     kind: "success",
     accessToken,
     idToken,
+    refreshToken: payload.AuthenticationResult?.RefreshToken ?? "",
+    expiresIn: payload.AuthenticationResult?.ExpiresIn ?? 3600,
     user: {
       id: subject,
       email: claims.email ?? email,
@@ -199,6 +205,8 @@ export async function authenticateWithPassword(email: string, password: string):
     AuthenticationResult?: {
       AccessToken?: string;
       IdToken?: string;
+      RefreshToken?: string;
+      ExpiresIn?: number;
     };
     ChallengeName?: string;
     ChallengeParameters?: Record<string, string>;
@@ -329,6 +337,8 @@ export async function respondToChallenge({
     AuthenticationResult?: {
       AccessToken?: string;
       IdToken?: string;
+      RefreshToken?: string;
+      ExpiresIn?: number;
     };
     ChallengeName?: string;
     ChallengeParameters?: Record<string, string>;
@@ -403,4 +413,49 @@ export async function confirmForgotPassword({
     Password: newPassword,
     SecretHash: authParameters.SECRET_HASH,
   });
+}
+
+export function buildRefreshPayload(
+  clientId: string,
+  refreshToken: string,
+  secretHash: string | null,
+) {
+  const authParameters: Record<string, string> = { REFRESH_TOKEN: refreshToken };
+
+  if (secretHash) {
+    authParameters.SECRET_HASH = secretHash;
+  }
+
+  return {
+    AuthFlow: "REFRESH_TOKEN_AUTH",
+    ClientId: clientId,
+    AuthParameters: authParameters,
+  };
+}
+
+export async function refreshCognitoTokens(refreshToken: string) {
+  if (!refreshToken) {
+    throw new CognitoApiError("Refresh token is missing.", "MissingRefreshToken");
+  }
+
+  const clientId = resolveCognitoClientId();
+  const payload = await callCognito<{
+    AuthenticationResult?: {
+      AccessToken?: string;
+      IdToken?: string;
+      ExpiresIn?: number;
+    };
+  }>("InitiateAuth", buildRefreshPayload(clientId, refreshToken, null));
+  const idToken = payload.AuthenticationResult?.IdToken;
+  const accessToken = payload.AuthenticationResult?.AccessToken;
+
+  if (!idToken || !accessToken) {
+    throw new CognitoApiError("Refresh returned an incomplete result.", "IncompleteRefresh");
+  }
+
+  return {
+    idToken,
+    accessToken,
+    expiresIn: payload.AuthenticationResult?.ExpiresIn ?? 3600,
+  };
 }

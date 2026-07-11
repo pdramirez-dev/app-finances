@@ -1,4 +1,4 @@
-# Business Plan - App Finances
+    # Business Plan - App Finances
 
 ## 1. Resumen ejecutivo
 
