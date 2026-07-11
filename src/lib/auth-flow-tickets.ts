@@ -19,6 +19,8 @@ export type AuthTicketPayload = BaseTicket<"auth"> & {
   };
   accessToken: string;
   idToken: string;
+  refreshToken: string;
+  expiresIn: number;
 };
 
 export type ChallengeName =

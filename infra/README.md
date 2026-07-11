@@ -7,7 +7,8 @@ Infra de `app-finances` con separación frontend/backend por entorno.
 - `AppFinances-Backend-<stage>`
   - Cognito (User Pool + App Client + Hosted UI domain)
   - AppSync (GraphQL)
-  - DynamoDB multi-tabla (invoices + accounts + memberships + clients + bank-accounts)
+  - Aurora PostgreSQL Serverless v2 para accounts, clients, bank accounts e invoices
+  - DynamoDB para membresías, auditoría append-only y metadatos PDF
   - S3 para PDFs
   - Lambda de generación PDF
 - `AppFinances-Frontend-<stage>`
@@ -22,20 +23,29 @@ Infra de `app-finances` con separación frontend/backend por entorno.
 ## AppSync
 
 - Schema: `infra/graphql/schema.graphql`
-- Resolvers: `infra/graphql/resolvers/*.js` (1 resolver por archivo)
+- Resolvers: fuentes en `infra/graphql/resolvers/src`, compilados con `npm run build:resolvers`
 - Auth principal: Cognito User Pool
-- Auth adicional: IAM
+- Cada operación de dominio valida primero una membresía `ACTIVE` por `accountId + userId`
+- No existe modo de autenticación IAM adicional
+- CloudWatch: alarmas de errores/latencia AppSync y errores/throttles de Lambda
 
 ## Comandos
 
 ```bash
 cd infra
 npm install
+npm run build:resolvers
+npm test
 npm run cdk:bootstrap
 npm run cdk:synth
 npm run cdk:deploy:dev -- -c devCognitoDomainPrefix=<unique-prefix-dev> -c devAuthSecret=<strong-secret>
 npm run cdk:deploy:prod -- -c prodCognitoDomainPrefix=<unique-prefix-prod> -c prodAuthSecret=<strong-secret>
 ```
+
+## Migración del piloto
+
+Después del deploy y de aplicar las migraciones, ejecutar `npm run backfill:pilot` con los ARN de
+Aurora y `PILOT_ACCOUNT_ID`. El procedimiento completo está en `docs/BACKFILL_PILOT.md`.
 
 Para ambos entornos:
 

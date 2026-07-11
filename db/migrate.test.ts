@@ -40,6 +40,14 @@ test("invoice_number is unique per account", async () => {
   expect(rows.length).toBeGreaterThan(0);
 });
 
+test("invoice clients are constrained to the same account", async () => {
+  const { rows } = await client.query(
+    `SELECT conname FROM pg_constraint
+     WHERE conrelid = 'invoices'::regclass AND conname = 'invoices_account_client_fk'`,
+  );
+  expect(rows).toHaveLength(1);
+});
+
 test("running migrations twice is idempotent", async () => {
   await expect(runMigrations(DATABASE_URL)).resolves.not.toThrow();
 });

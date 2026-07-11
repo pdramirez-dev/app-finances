@@ -1,6 +1,6 @@
 import "server-only";
 
-import { auth } from "@/auth";
+import { getServerIdToken } from "@/lib/cognito-session";
 import type {
   InvoiceLineItemRecord,
   InvoiceRecord,
@@ -37,6 +37,8 @@ type InvoiceSectionRaw = {
 
 type InvoiceRaw = {
   invoiceId: string;
+  accountId?: string;
+  clientId?: string | null;
   invoiceNumber: number;
   date: string;
   weekNumber: number;
@@ -298,8 +300,7 @@ async function appsyncRequest<T>(query: string, variables?: Record<string, unkno
     throw new Error("Missing APPSYNC_GRAPHQL_URL");
   }
 
-  const session = await auth();
-  const idToken = session?.idToken;
+  const idToken = await getServerIdToken();
 
   if (!idToken) {
     throw new Error("Missing Cognito ID token in session");

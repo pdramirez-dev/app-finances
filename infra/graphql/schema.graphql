@@ -14,6 +14,17 @@ enum AccountType {
   COMPANY
 }
 
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 type Query {
   getInvoice(invoiceId: ID!): Invoice
   getInvoiceByNumber(invoiceNumber: Int!): Invoice
@@ -22,6 +33,7 @@ type Query {
   listClients(limit: Int, nextToken: String): ClientConnection!
   getClient(clientId: ID!): Client
   getBankAccount(bankAccountId: ID!): BankAccount
+  getMyMembership: UserMembership!
 }
 
 type Mutation {
@@ -51,6 +63,8 @@ type ClientConnection {
 
 type Invoice {
   invoiceId: ID!
+  accountId: ID!
+  clientId: ID
   invoiceNumber: Int!
   date: AWSDate!
   weekNumber: Int!
@@ -130,8 +144,18 @@ type BankAccount {
   updatedAt: AWSDateTime!
 }
 
+type UserMembership {
+  accountId: ID!
+  userId: ID!
+  role: MembershipRole!
+  status: MembershipStatus!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
 input PutInvoiceInput {
   invoiceId: ID
+  clientId: ID
   invoiceNumber: Int
   date: AWSDate!
   weekNumber: Int!

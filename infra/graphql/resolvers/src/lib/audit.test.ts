@@ -4,7 +4,7 @@ import { buildAuditItem } from "./audit";
 const base = {
   accountId: "ACC_A", actor: "user@x.com", action: "DELETE", entityType: "CLIENT",
   entityId: "C1", data: { name: "X" }, now: "2026-06-25T10:00:00.000Z", uid: "abc123", ttlSeconds: 1900000000,
-};
+} as const;
 
 test("partition key is accountId and sort key is timestamp#uid", () => {
   const it = buildAuditItem(base);

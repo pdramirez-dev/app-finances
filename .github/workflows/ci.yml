@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app_finances_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app_finances_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      AUTH_SECRET: ci-secret-with-at-least-32-characters
+      AUTH_URL: http://localhost:3000
+      AUTH_COGNITO_USER_POOL_ID: us-east-1_CI000000
+      AUTH_COGNITO_USER_POOL_CLIENT_ID: ci-client
+      APPSYNC_GRAPHQL_URL: https://example.appsync-api.us-east-1.amazonaws.com/graphql
+      TEST_DATABASE_URL: postgres://app:app@localhost:55432/app_finances_test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install infrastructure dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Lint application
+        run: npm run lint
+      - name: Typecheck application
+        run: npx tsc --noEmit
+      - name: Test migrations and application
+        run: npm test
+      - name: Build application
+        run: npm run build
+
+      - name: Build AppSync resolvers
+        working-directory: infra
+        run: npm run build:resolvers
+      - name: Typecheck infrastructure
+        working-directory: infra
+        run: npx tsc --noEmit
+      - name: Test infrastructure and tenant isolation
+        working-directory: infra
+        run: npm test
+      - name: Synthesize backend stack
+        working-directory: infra
+        run: npx cdk synth AppFinances-Backend-dev -c stages=dev

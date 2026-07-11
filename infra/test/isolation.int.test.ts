@@ -73,6 +73,18 @@ test("putInvoiceCreate yields sequential per-account numbers starting at 1", asy
   expect(r3[0].invoiceNumber).not.toBe(r2[0].invoiceNumber + 1);
 });
 
+test("account A cannot attach account B's client to a new invoice", async () => {
+  const before = await db.query("SELECT last_invoice_number FROM invoice_counters WHERE account_id = $1", [ACC_A]);
+  const rows = await run(putInvoiceCreate(ACC_A, { input: {
+    clientId: "bbbbbbbb-0000-0000-0000-000000000001",
+    date: "2026-01-01", weekNumber: 1, billToName: "b",
+    billToAddress: "b", project: "p", grandTotal: 1,
+  } } as any));
+  expect(rows).toHaveLength(0);
+  const after = await db.query("SELECT last_invoice_number FROM invoice_counters WHERE account_id = $1", [ACC_A]);
+  expect(after.rows[0].last_invoice_number).toBe(before.rows[0].last_invoice_number);
+});
+
 test("deleteInvoiceSection cannot touch another account's section", async () => {
   const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
     billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];

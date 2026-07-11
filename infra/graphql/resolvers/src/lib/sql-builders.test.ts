@@ -5,6 +5,7 @@ import {
   putClient, putBankAccount, putAccount,
   putInvoiceCreate, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
+  normalizeMaskedBankValue,
 } from "./sql-builders";
 
 test("listInvoices scopes by claim accountId and ignores args.accountId", () => {
@@ -56,6 +57,13 @@ test("putBankAccount injects account_id from claim, not from input", () => {
   expect(r.statement).toMatch(/ON CONFLICT/i);
   expect(r.statement).toMatch(/WHERE bank_accounts\.account_id = :acc/i);
   expect(r.params.acc).toBe("ACC_A");
+});
+
+test("bank identifiers must already be safely masked", () => {
+  expect(normalizeMaskedBankValue("****6789")).toBe("****6789");
+  expect(normalizeMaskedBankValue("GB** **** 1234", 6)).toBe("GB** **** 1234");
+  expect(() => normalizeMaskedBankValue("123456789")).toThrow(/must be masked/i);
+  expect(() => normalizeMaskedBankValue("**123456")).toThrow(/final characters/i);
 });
 
 test("putAccount upserts with account id from claim and returns aliased columns", () => {
@@ -135,6 +143,7 @@ test("putInvoice (create) bumps the per-account counter and inserts atomically",
   expect(r.statement).toMatch(/ON CONFLICT[\s\S]*DO UPDATE SET/i);
   expect(r.statement).toMatch(/INSERT INTO invoices/i);
   expect(r.params.acc).toBe("ACC_A");
+  expect(r.statement).toMatch(/clients c WHERE c\.id = CAST\(:clientId AS uuid\) AND c\.account_id = :acc/i);
 });
 
 test("putInvoiceCreate RETURNING uses aliased invoice columns", () => {
@@ -142,6 +151,8 @@ test("putInvoiceCreate RETURNING uses aliased invoice columns", () => {
     billToName: "x", billToAddress: "y", project: "p", grandTotal: 10 } } as any);
   expect(r.statement).toMatch(/RETURNING/i);
   expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.statement).toMatch(/account_id AS "accountId"/);
+  expect(r.statement).toMatch(/client_id AS "clientId"/);
   expect(r.statement).toMatch(/invoice_number AS "invoiceNumber"/);
   expect(r.statement).not.toMatch(/RETURNING \*/);
 });

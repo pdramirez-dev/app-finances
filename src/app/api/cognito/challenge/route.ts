@@ -85,6 +85,8 @@ export async function POST(request: Request) {
           user: result.user,
           accessToken: result.accessToken,
           idToken: result.idToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
         }),
       });
     }

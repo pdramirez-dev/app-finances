@@ -6,8 +6,9 @@ App web para generar y administrar invoices.
 
 - Next.js (App Router + TypeScript)
 - NextAuth v5 con proveedor Credentials sobre Cognito
-- AWS AppSync (GraphQL)
-- DynamoDB (multi-tabla)
+- AWS AppSync (GraphQL) con autorización por Cognito y membresía activa
+- Aurora PostgreSQL Serverless v2 para datos de dominio
+- DynamoDB para membresías, auditoría y metadatos PDF
 - S3 (PDFs)
 - CDK para infraestructura (`infra/`)
 
@@ -64,7 +65,7 @@ npm run bootstrap:dev -- \
 
 `infra/` define dos stacks por entorno:
 
-- `AppFinances-Backend-<stage>`: Cognito, AppSync, DynamoDB, S3, Lambda PDF
+- `AppFinances-Backend-<stage>`: Cognito, AppSync, Aurora, DynamoDB, S3, Lambda PDF y alarmas
 - `AppFinances-Frontend-<stage>`: Amplify Hosting (consume outputs del backend)
 
 Ver detalles y comandos en `infra/README.md`.
