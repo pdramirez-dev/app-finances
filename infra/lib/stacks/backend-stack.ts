@@ -328,6 +328,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     securedRdsResolver("QueryGetClient", "Query", "getClient", "query-get-client");
     securedRdsResolver("QueryGetBankAccount", "Query", "getBankAccount", "query-get-bank-account");
     securedRdsResolver("MutationPutInvoice", "Mutation", "putInvoice", "mutation-put-invoice");
+    securedRdsResolver("MutationCreateInvoiceFull", "Mutation", "createInvoiceFull", "mutation-create-invoice-full");
     securedRdsResolver("MutationPutClient", "Mutation", "putClient", "mutation-put-client");
     securedRdsResolver("MutationPutInvoiceSection", "Mutation", "putInvoiceSection", "mutation-put-invoice-section");
     securedRdsResolver("MutationPutInvoiceLineItem", "Mutation", "putInvoiceLineItem", "mutation-put-invoice-line-item");

@@ -3,11 +3,25 @@ import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
 import {
   listClients, getClient, getInvoice,
-  putInvoiceCreate, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
 const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_finances_test";
+
+const dbAvailable = await (async () => {
+  const probe = new Client({ connectionString: URL, connectionTimeoutMillis: 2000 });
+  try {
+    await probe.connect();
+    await probe.end();
+    return true;
+  } catch {
+    console.warn(`Skipping isolation tests: no Postgres reachable at ${URL}`);
+    return false;
+  }
+})();
+
+const dbTest = test.skipIf(!dbAvailable);
 let db: Client;
 
 // Ejecuta un SqlRequest (:name) sustituyendo por placeholders posicionales de pg.
@@ -20,6 +34,7 @@ async function run(req: { statement: string; params: Record<string, unknown> }) 
 }
 
 beforeAll(async () => {
+  if (!dbAvailable) return;
   await runMigrations(URL);
   db = new Client({ connectionString: URL });
   await db.connect();
@@ -36,29 +51,29 @@ afterAll(async () => { await db?.end(); });
 const ACC_A = "11111111-1111-1111-1111-111111111111";
 const ACC_B = "22222222-2222-2222-2222-222222222222";
 
-test("listClients only returns the caller account's clients", async () => {
+dbTest("listClients only returns the caller account's clients", async () => {
   const rows = await run(listClients(ACC_A, {}));
   expect(rows).toHaveLength(1);
   expect(rows[0].name).toBe("Cliente A");
   expect(rows[0].clientId).toBe("aaaaaaaa-0000-0000-0000-000000000001");
 });
 
-test("account A cannot read account B's client by id", async () => {
+dbTest("account A cannot read account B's client by id", async () => {
   const rows = await run(getClient(ACC_A, { clientId: "bbbbbbbb-0000-0000-0000-000000000001" }));
   expect(rows).toHaveLength(0);
 });
 
-test("account A cannot read account B's invoice by id", async () => {
+dbTest("account A cannot read account B's invoice by id", async () => {
   const rows = await run(getInvoice(ACC_A, { invoiceId: "cccccccc-0000-0000-0000-000000000001" }));
   expect(rows).toHaveLength(0);
 });
 
-test("account B can read its own invoice by id (seed verification)", async () => {
+dbTest("account B can read its own invoice by id (seed verification)", async () => {
   const rows = await run(getInvoice(ACC_B, { invoiceId: "cccccccc-0000-0000-0000-000000000001" }));
   expect(rows).toHaveLength(1);
 });
 
-test("putInvoiceCreate yields sequential per-account numbers starting at 1", async () => {
+dbTest("putInvoiceCreate yields sequential per-account numbers starting at 1", async () => {
   const mk = () => ({ input: { date: "2026-01-01", weekNumber: 1, billToName: "a",
     billToAddress: "b", project: "p", grandTotal: 1 } });
   const r1 = await run(putInvoiceCreate(ACC_A, mk() as any));
@@ -73,7 +88,7 @@ test("putInvoiceCreate yields sequential per-account numbers starting at 1", asy
   expect(r3[0].invoiceNumber).not.toBe(r2[0].invoiceNumber + 1);
 });
 
-test("account A cannot attach account B's client to a new invoice", async () => {
+dbTest("account A cannot attach account B's client to a new invoice", async () => {
   const before = await db.query("SELECT last_invoice_number FROM invoice_counters WHERE account_id = $1", [ACC_A]);
   const rows = await run(putInvoiceCreate(ACC_A, { input: {
     clientId: "bbbbbbbb-0000-0000-0000-000000000001",
@@ -85,7 +100,7 @@ test("account A cannot attach account B's client to a new invoice", async () => 
   expect(after.rows[0].last_invoice_number).toBe(before.rows[0].last_invoice_number);
 });
 
-test("deleteInvoiceSection cannot touch another account's section", async () => {
+dbTest("deleteInvoiceSection cannot touch another account's section", async () => {
   const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
     billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
   const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "T", position: 0, total: 0 } } as any)))[0];
@@ -93,7 +108,7 @@ test("deleteInvoiceSection cannot touch another account's section", async () => 
   expect(deletedByB).toHaveLength(0); // B deletes nothing
 });
 
-test("putInvoiceSection cannot tamper with another account's section via ON CONFLICT", async () => {
+dbTest("putInvoiceSection cannot tamper with another account's section via ON CONFLICT", async () => {
   const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
     billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
   const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "ORIGINAL", position: 0, total: 0 } } as any)))[0];
@@ -108,7 +123,7 @@ test("putInvoiceSection cannot tamper with another account's section via ON CONF
   expect(stillOriginal.rows[0]).toMatchObject({ title: "ORIGINAL", position: 0 });
 });
 
-test("putInvoiceLineItem cannot tamper with another account's line item via ON CONFLICT", async () => {
+dbTest("putInvoiceLineItem cannot tamper with another account's line item via ON CONFLICT", async () => {
   const inv = (await run(putInvoiceCreate(ACC_A, { input: { date: "2026-01-01", weekNumber: 1,
     billToName: "a", billToAddress: "b", project: "p", grandTotal: 1 } } as any)))[0];
   const sec = (await run(putInvoiceSection(ACC_A, { input: { invoiceId: inv.invoiceId, title: "S", position: 0, total: 0 } } as any)))[0];
@@ -120,4 +135,57 @@ test("putInvoiceLineItem cannot tamper with another account's line item via ON C
   expect(tamper).toHaveLength(0);
   const still = await db.query(`SELECT description, amount FROM invoice_line_items WHERE id = $1`, [li.lineItemId]);
   expect(still.rows[0]).toMatchObject({ description: "ORIGINAL" });
+});
+
+dbTest("createInvoiceFull creates invoice, sections and line items in one statement", async () => {
+  const rows = await run(createInvoiceFull(ACC_A, { input: {
+    date: "2026-02-01", weekNumber: 5, billToName: "Full", billToAddress: "Addr", project: "P",
+    grandTotal: 25,
+    sections: [
+      { title: "Crew", total: 15, lineItems: [
+        { description: "Day 1", quantity: 1, amount: 10 },
+        { description: "Day 2", quantity: 0.5, amount: 10 },
+      ] },
+      { title: "Extras", total: 10, lineItems: [{ description: "Gear", quantity: 1, amount: 10 }] },
+    ],
+  } } as any));
+  expect(rows).toHaveLength(1);
+  expect(rows[0].invoiceNumber).toBeGreaterThan(0);
+
+  const sections = await db.query(
+    "SELECT id, title, position FROM invoice_sections WHERE invoice_id = $1 ORDER BY position",
+    [rows[0].invoiceId],
+  );
+  expect(sections.rows.map((r) => [r.title, r.position])).toEqual([["Crew", 0], ["Extras", 1]]);
+
+  const items = await db.query(
+    `SELECT li.description, li.position, s.title AS section_title
+     FROM invoice_line_items li JOIN invoice_sections s ON s.id = li.section_id
+     WHERE s.invoice_id = $1 ORDER BY s.position, li.position`,
+    [rows[0].invoiceId],
+  );
+  expect(items.rows.map((r) => [r.section_title, r.description, r.position])).toEqual([
+    ["Crew", "Day 1", 0],
+    ["Crew", "Day 2", 1],
+    ["Extras", "Gear", 0],
+  ]);
+});
+
+dbTest("createInvoiceFull with a foreign client id inserts nothing at all (atomicity)", async () => {
+  const countRows = () => db.query(
+    `SELECT (SELECT count(*)::int FROM invoices) AS inv,
+            (SELECT count(*)::int FROM invoice_sections) AS sec,
+            (SELECT count(*)::int FROM invoice_line_items) AS li,
+            (SELECT COALESCE(max(last_invoice_number), 0) FROM invoice_counters WHERE account_id = '${ACC_A}') AS counter`,
+  );
+  const before = (await countRows()).rows[0];
+  const rows = await run(createInvoiceFull(ACC_A, { input: {
+    clientId: "bbbbbbbb-0000-0000-0000-000000000001", // belongs to ACC_B
+    date: "2026-02-01", weekNumber: 5, billToName: "Full", billToAddress: "Addr", project: "P",
+    grandTotal: 10,
+    sections: [{ title: "Crew", total: 10, lineItems: [{ description: "Day", quantity: 1, amount: 10 }] }],
+  } } as any));
+  expect(rows).toHaveLength(0);
+  const after = (await countRows()).rows[0];
+  expect(after).toEqual(before);
 });

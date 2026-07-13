@@ -1,5 +1,18 @@
 export type SqlRequest = { statement: string; params: Record<string, unknown> };
 
+export const DEFAULT_PAGE_SIZE = 25;
+
+export function decodePageToken(token: unknown): number {
+  if (token === null || token === undefined || token === "") return 0;
+  const offset = Number(token);
+  if (!Number.isInteger(offset) || offset < 0) throw new Error("Invalid pagination token");
+  return offset;
+}
+
+export function nextPageToken(offset: number, limit: number, rowCount: number): string | null {
+  return rowCount < limit ? null : String(offset + limit);
+}
+
 export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string | null {
   if (value === null || value === undefined || value === "") return null;
   const normalized = String(value).trim();
@@ -30,12 +43,12 @@ const ACCOUNT_COLS =
 const BANK_ACCOUNT_COLS =
   `id AS "bankAccountId", account_id AS "accountId", beneficiary_name AS "beneficiaryName", bank_name AS "bankName", account_number_masked AS "accountNumberMasked", routing_number_masked AS "routingNumberMasked", iban_masked AS "ibanMasked", swift_code AS "swiftCode", currency, country, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
-export function listInvoices(acc: string, args: { status?: string; limit?: number }): SqlRequest {
+export function listInvoices(acc: string, args: { status?: string; limit?: number; offset?: number }): SqlRequest {
   const where = args.status ? "account_id = :acc AND status = :status" : "account_id = :acc";
-  const params: Record<string, unknown> = { acc, lim: args.limit ?? 25 };
+  const params: Record<string, unknown> = { acc, lim: args.limit ?? DEFAULT_PAGE_SIZE, off: args.offset ?? 0 };
   if (args.status) params.status = args.status;
   return {
-    statement: `SELECT ${INVOICE_COLS} FROM invoices WHERE ${where} ORDER BY created_at DESC LIMIT :lim`,
+    statement: `SELECT ${INVOICE_COLS} FROM invoices WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT :lim OFFSET :off`,
     params,
   };
 }
@@ -69,10 +82,10 @@ export function updateInvoiceStatus(acc: string, args: { invoiceId: string; stat
   };
 }
 
-export function listClients(acc: string, _args: { limit?: number }): SqlRequest {
+export function listClients(acc: string, args: { limit?: number; offset?: number }): SqlRequest {
   return {
-    statement: `SELECT ${CLIENT_COLS} FROM clients WHERE account_id = :acc ORDER BY lower(name) LIMIT :lim`,
-    params: { acc, lim: _args.limit ?? 25 },
+    statement: `SELECT ${CLIENT_COLS} FROM clients WHERE account_id = :acc ORDER BY lower(name), id LIMIT :lim OFFSET :off`,
+    params: { acc, lim: args.limit ?? DEFAULT_PAGE_SIZE, off: args.offset ?? 0 },
   };
 }
 
@@ -171,6 +184,64 @@ export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest 
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
               currency: i.currency ?? "USD", notes: i.notes ?? null,
               grandTotal: i.grandTotal, status: i.status ?? "DRAFT" },
+  };
+}
+
+export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  // Positions derive from array order so the section/item JSON is self-describing
+  // and the line-item join below can rely on unique section positions.
+  const sections = (i.sections ?? []).map((section: any, sectionIndex: number) => ({
+    title: section.title,
+    position: sectionIndex,
+    total: section.total,
+    items: (section.lineItems ?? []).map((item: any, itemIndex: number) => ({
+      description: item.description,
+      quantity: item.quantity,
+      amount: item.amount,
+      position: itemIndex,
+    })),
+  }));
+  return {
+    statement: `WITH valid_client AS (
+        SELECT CAST(:clientId AS uuid) AS id
+        WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
+          SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
+        )
+      ), n AS (
+        INSERT INTO invoice_counters (account_id, last_invoice_number)
+        SELECT :acc, 1 FROM valid_client
+        ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
+        RETURNING last_invoice_number
+      ), new_invoice AS (
+        INSERT INTO invoices (account_id, client_id, invoice_number, date, week_number, bill_to_name,
+          bill_to_address, project, currency, notes, grand_total, status)
+        SELECT :acc, valid_client.id, n.last_invoice_number, :date, :week, :billName, :billAddr, :project,
+          :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+        RETURNING *
+      ), section_input AS (
+        SELECT s.title, s.position, s.total, s.items
+        FROM jsonb_to_recordset(CAST(:sections AS jsonb))
+          AS s(title text, position int, total numeric, items jsonb)
+      ), new_sections AS (
+        INSERT INTO invoice_sections (invoice_id, title, position, total)
+        SELECT ni.id, s.title, s.position, s.total FROM section_input s CROSS JOIN new_invoice ni
+        RETURNING id, position
+      ), new_line_items AS (
+        INSERT INTO invoice_line_items (section_id, description, quantity, amount, position)
+        SELECT ns.id, li.description, li.quantity, li.amount, li.position
+        FROM section_input s
+        JOIN new_sections ns ON ns.position = s.position
+        CROSS JOIN LATERAL jsonb_to_recordset(s.items)
+          AS li(description text, quantity numeric, amount numeric, position int)
+        RETURNING id
+      )
+      SELECT ${INVOICE_COLS} FROM new_invoice`,
+    params: { acc, clientId: i.clientId ?? null, date: i.date, week: i.weekNumber,
+              billName: i.billToName, billAddr: i.billToAddress, project: i.project,
+              currency: i.currency ?? "USD", notes: i.notes ?? null,
+              grandTotal: i.grandTotal, status: i.status ?? "DRAFT",
+              sections: JSON.stringify(sections) },
   };
 }
 

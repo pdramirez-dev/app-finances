@@ -53,6 +53,8 @@ jobs:
         run: npm run lint
       - name: Typecheck application
         run: npx tsc --noEmit
+      - name: Verify GraphQL codegen is up to date
+        run: npm run codegen && git diff --exit-code src/lib/appsync/graphql.generated.ts
       - name: Test migrations and application
         run: npm test
       - name: Build application

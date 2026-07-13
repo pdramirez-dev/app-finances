@@ -2,6 +2,15 @@ import "server-only";
 
 import { getServerIdToken } from "@/lib/cognito-session";
 import type {
+  CreateInvoiceFullInput,
+  CreateInvoiceFullMutation,
+  DeleteInvoiceMutation,
+  GetInvoiceByNumberQuery,
+  GetInvoiceQuery,
+  ListInvoicesQuery,
+  UpdateInvoiceStatusMutation,
+} from "@/lib/appsync/graphql.generated";
+import type {
   InvoiceLineItemRecord,
   InvoiceRecord,
   InvoiceSectionRecord,
@@ -17,75 +26,13 @@ type GraphQLResponse<T> = {
   errors?: GraphQLError[];
 };
 
-type InvoiceLineItemRaw = {
-  sectionId: string;
-  lineItemId: string;
-  description: string;
-  quantity: number;
-  amount: number;
-  position: number;
-};
-
-type InvoiceSectionRaw = {
-  invoiceId: string;
-  sectionId: string;
-  title: string;
-  position: number;
-  total: number;
-  lineItems?: InvoiceLineItemRaw[];
-};
-
-type InvoiceRaw = {
-  invoiceId: string;
-  accountId?: string;
-  clientId?: string | null;
-  invoiceNumber: number;
-  date: string;
-  weekNumber: number;
-  billToName: string;
-  billToAddress: string;
-  project: string;
-  currency: string;
-  notes?: string | null;
-  grandTotal: number;
-  status: InvoiceStatus;
-  createdAt: string;
-  updatedAt: string;
+type InvoiceSectionRaw = NonNullable<GetInvoiceQuery["getInvoice"]>["sections"][number];
+type InvoiceLineItemRaw = InvoiceSectionRaw["lineItems"][number];
+type InvoiceRaw = ListInvoicesQuery["listInvoices"]["items"][number] & {
   sections?: InvoiceSectionRaw[];
 };
 
-type ListInvoicesResult = {
-  listInvoices: {
-    items: InvoiceRaw[];
-    nextToken: string | null;
-  };
-};
-
-type GetInvoiceResult = {
-  getInvoice: InvoiceRaw | null;
-};
-
-type GetInvoiceByNumberResult = {
-  getInvoiceByNumber: InvoiceRaw | null;
-};
-
-type PutInvoiceResult = {
-  putInvoice: InvoiceRaw;
-};
-
-type PutInvoiceSectionResult = {
-  putInvoiceSection: InvoiceSectionRaw;
-};
-
-type PutInvoiceLineItemResult = {
-  putInvoiceLineItem: InvoiceLineItemRaw;
-};
-
-type UpdateInvoiceStatusResult = {
-  updateInvoiceStatus: InvoiceRaw;
-};
-
-const LIST_INVOICES_QUERY = `
+const LIST_INVOICES_QUERY = /* GraphQL */ `
   query ListInvoices($status: InvoiceStatus, $limit: Int, $nextToken: String) {
     listInvoices(status: $status, limit: $limit, nextToken: $nextToken) {
       items {
@@ -108,7 +55,7 @@ const LIST_INVOICES_QUERY = `
   }
 `;
 
-const GET_INVOICE_QUERY = `
+const GET_INVOICE_QUERY = /* GraphQL */ `
   query GetInvoice($invoiceId: ID!) {
     getInvoice(invoiceId: $invoiceId) {
       invoiceId
@@ -143,7 +90,7 @@ const GET_INVOICE_QUERY = `
   }
 `;
 
-const GET_INVOICE_BY_NUMBER_QUERY = `
+const GET_INVOICE_BY_NUMBER_QUERY = /* GraphQL */ `
   query GetInvoiceByNumber($invoiceNumber: Int!) {
     getInvoiceByNumber(invoiceNumber: $invoiceNumber) {
       invoiceId
@@ -163,9 +110,9 @@ const GET_INVOICE_BY_NUMBER_QUERY = `
   }
 `;
 
-const PUT_INVOICE_MUTATION = `
-  mutation PutInvoice($input: PutInvoiceInput!) {
-    putInvoice(input: $input) {
+const CREATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
+  mutation CreateInvoiceFull($input: CreateInvoiceFullInput!) {
+    createInvoiceFull(input: $input) {
       invoiceId
       invoiceNumber
       date
@@ -183,32 +130,7 @@ const PUT_INVOICE_MUTATION = `
   }
 `;
 
-const PUT_INVOICE_SECTION_MUTATION = `
-  mutation PutInvoiceSection($input: PutInvoiceSectionInput!) {
-    putInvoiceSection(input: $input) {
-      invoiceId
-      sectionId
-      title
-      position
-      total
-    }
-  }
-`;
-
-const PUT_INVOICE_LINE_ITEM_MUTATION = `
-  mutation PutInvoiceLineItem($input: PutInvoiceLineItemInput!) {
-    putInvoiceLineItem(input: $input) {
-      sectionId
-      lineItemId
-      description
-      quantity
-      amount
-      position
-    }
-  }
-`;
-
-const UPDATE_INVOICE_STATUS_MUTATION = `
+const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
   mutation UpdateInvoiceStatus($invoiceId: ID!, $status: InvoiceStatus!) {
     updateInvoiceStatus(invoiceId: $invoiceId, status: $status) {
       invoiceId
@@ -228,21 +150,9 @@ const UPDATE_INVOICE_STATUS_MUTATION = `
   }
 `;
 
-const DELETE_INVOICE_MUTATION = `
+const DELETE_INVOICE_MUTATION = /* GraphQL */ `
   mutation DeleteInvoice($invoiceId: ID!) {
     deleteInvoice(invoiceId: $invoiceId)
-  }
-`;
-
-const DELETE_INVOICE_SECTION_MUTATION = `
-  mutation DeleteInvoiceSection($invoiceId: ID!, $sectionId: ID!) {
-    deleteInvoiceSection(invoiceId: $invoiceId, sectionId: $sectionId)
-  }
-`;
-
-const DELETE_INVOICE_LINE_ITEM_MUTATION = `
-  mutation DeleteInvoiceLineItem($sectionId: ID!, $lineItemId: ID!) {
-    deleteInvoiceLineItem(sectionId: $sectionId, lineItemId: $lineItemId)
   }
 `;
 
@@ -292,7 +202,29 @@ function normalizeInvoice(invoice: InvoiceRaw): InvoiceRecord {
   };
 }
 
-async function appsyncRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+export async function appsyncRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  if (process.env.NODE_ENV === "development" && process.env.DEV_AUTH_BYPASS === "true") {
+    const now = new Date().toISOString();
+    const accountId = "00000000-0000-4000-8000-000000000001";
+    const input = (variables?.input ?? {}) as Record<string, unknown>;
+
+    if (query.includes("ListInvoices")) return { listInvoices: { items: [], nextToken: null } } as T;
+    if (query.includes("GetInvoiceByNumber")) return { getInvoiceByNumber: null } as T;
+    if (query.includes("GetInvoice(")) return { getInvoice: null } as T;
+    if (query.includes("ListClients")) return { listClients: { items: [
+      { accountId, clientId: "10000000-0000-4000-8000-000000000001", name: "Acme Studio", email: "billing@acme.test", phone: "+1 555 0100", address: "100 Market Street", taxId: "US-10001" },
+      { accountId, clientId: "10000000-0000-4000-8000-000000000002", name: "Northwind Labs", email: "finance@northwind.test", phone: "+1 555 0132", address: "42 Lake Avenue", taxId: "US-10002" },
+    ], nextToken: null } } as T;
+    if (query.includes("GetAccount")) return { getAccount: { accountId, type: "COMPANY", displayName: "Lightning Services", legalName: "Lightning Services of Tampa LLC", taxId: "US-DEMO-01", email: "hello@lightning.test", phone: "+1 555 0199", address: "Tampa, Florida" } } as T;
+    if (query.includes("GetMyMembership")) return { getMyMembership: { accountId, userId: "dev-user", role: "OWNER", status: "ACTIVE", createdAt: now, updatedAt: now } } as T;
+    if (query.includes("PutAccount")) return { putAccount: { accountId, ...input, createdAt: now, updatedAt: now } } as T;
+    if (query.includes("PutClient")) return { putClient: { accountId, clientId: input.clientId ?? crypto.randomUUID(), ...input, createdAt: now, updatedAt: now } } as T;
+    if (query.includes("DeleteClient")) return { deleteClient: true } as T;
+    if (query.includes("PutBankAccount")) return { putBankAccount: { accountId, bankAccountId: crypto.randomUUID(), ...input, createdAt: now, updatedAt: now } } as T;
+    if (query.includes("DeleteInvoice")) return { deleteInvoice: true } as T;
+    throw new Error("Esta operación no está disponible en el modo demo local");
+  }
+
   const graphqlUrl =
     process.env.APPSYNC_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_APPSYNC_GRAPHQL_URL ?? "";
 
@@ -342,7 +274,7 @@ export async function listInvoices(options?: {
   let cursor: string | null = null;
 
   do {
-    const data: ListInvoicesResult = await appsyncRequest<ListInvoicesResult>(LIST_INVOICES_QUERY, {
+    const data: ListInvoicesQuery = await appsyncRequest<ListInvoicesQuery>(LIST_INVOICES_QUERY, {
       status: options?.status,
       limit,
       nextToken: cursor,
@@ -352,7 +284,7 @@ export async function listInvoices(options?: {
       invoices.push(normalizeInvoice(item));
     }
 
-    cursor = data.listInvoices.nextToken;
+    cursor = data.listInvoices.nextToken ?? null;
   } while (cursor);
 
   invoices.sort((a, b) => b.invoiceNumber - a.invoiceNumber);
@@ -360,71 +292,29 @@ export async function listInvoices(options?: {
 }
 
 export async function getInvoiceById(invoiceId: string): Promise<InvoiceRecord | null> {
-  const data = await appsyncRequest<GetInvoiceResult>(GET_INVOICE_QUERY, { invoiceId });
+  const data = await appsyncRequest<GetInvoiceQuery>(GET_INVOICE_QUERY, { invoiceId });
   return data.getInvoice ? normalizeInvoice(data.getInvoice) : null;
 }
 
 export async function getInvoiceByNumber(invoiceNumber: number): Promise<InvoiceRecord | null> {
-  const data = await appsyncRequest<GetInvoiceByNumberResult>(GET_INVOICE_BY_NUMBER_QUERY, {
+  const data = await appsyncRequest<GetInvoiceByNumberQuery>(GET_INVOICE_BY_NUMBER_QUERY, {
     invoiceNumber,
   });
   return data.getInvoiceByNumber ? normalizeInvoice(data.getInvoiceByNumber) : null;
 }
 
-export type PutInvoiceInput = {
-  invoiceId?: string;
-  invoiceNumber?: number;
-  date: string;
-  weekNumber: number;
-  billToName: string;
-  billToAddress: string;
-  project: string;
-  currency?: string;
-  notes?: string | null;
-  grandTotal: number;
-  status?: InvoiceStatus;
-  createdAt?: string;
-};
-
-export async function putInvoice(input: PutInvoiceInput): Promise<InvoiceRecord> {
-  const data = await appsyncRequest<PutInvoiceResult>(PUT_INVOICE_MUTATION, {
+export async function createInvoiceFull(input: CreateInvoiceFullInput): Promise<InvoiceRecord> {
+  const data = await appsyncRequest<CreateInvoiceFullMutation>(CREATE_INVOICE_FULL_MUTATION, {
     input,
   });
-  return normalizeInvoice(data.putInvoice);
-}
-
-export async function putInvoiceSection(input: {
-  invoiceId: string;
-  sectionId?: string;
-  title: string;
-  position: number;
-  total: number;
-}): Promise<InvoiceSectionRecord> {
-  const data = await appsyncRequest<PutInvoiceSectionResult>(PUT_INVOICE_SECTION_MUTATION, {
-    input,
-  });
-  return normalizeSection(data.putInvoiceSection);
-}
-
-export async function putInvoiceLineItem(input: {
-  sectionId: string;
-  lineItemId?: string;
-  description: string;
-  quantity: number;
-  amount: number;
-  position: number;
-}): Promise<InvoiceLineItemRecord> {
-  const data = await appsyncRequest<PutInvoiceLineItemResult>(PUT_INVOICE_LINE_ITEM_MUTATION, {
-    input,
-  });
-  return normalizeLineItem(data.putInvoiceLineItem);
+  return normalizeInvoice(data.createInvoiceFull);
 }
 
 export async function updateInvoiceStatus(
   invoiceId: string,
   status: InvoiceStatus,
 ): Promise<InvoiceRecord> {
-  const data = await appsyncRequest<UpdateInvoiceStatusResult>(UPDATE_INVOICE_STATUS_MUTATION, {
+  const data = await appsyncRequest<UpdateInvoiceStatusMutation>(UPDATE_INVOICE_STATUS_MUTATION, {
     invoiceId,
     status,
   });
@@ -432,22 +322,6 @@ export async function updateInvoiceStatus(
 }
 
 export async function deleteInvoice(invoiceId: string): Promise<boolean> {
-  const data = await appsyncRequest<{ deleteInvoice: boolean }>(DELETE_INVOICE_MUTATION, { invoiceId });
+  const data = await appsyncRequest<DeleteInvoiceMutation>(DELETE_INVOICE_MUTATION, { invoiceId });
   return data.deleteInvoice;
-}
-
-export async function deleteInvoiceSection(invoiceId: string, sectionId: string): Promise<boolean> {
-  const data = await appsyncRequest<{ deleteInvoiceSection: boolean }>(
-    DELETE_INVOICE_SECTION_MUTATION,
-    { invoiceId, sectionId },
-  );
-  return data.deleteInvoiceSection;
-}
-
-export async function deleteInvoiceLineItem(sectionId: string, lineItemId: string): Promise<boolean> {
-  const data = await appsyncRequest<{ deleteInvoiceLineItem: boolean }>(
-    DELETE_INVOICE_LINE_ITEM_MUTATION,
-    { sectionId, lineItemId },
-  );
-  return data.deleteInvoiceLineItem;
 }
