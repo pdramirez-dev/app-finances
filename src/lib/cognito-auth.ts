@@ -61,6 +61,16 @@ function resolveCognitoRegion() {
   return cognitoRegionFromUserPoolId(requiredEnv("AUTH_COGNITO_USER_POOL_ID"));
 }
 
+export function resolveCognitoEndpoint() {
+  const endpointOverride = process.env.AUTH_COGNITO_ENDPOINT_URL?.trim();
+
+  if (endpointOverride) {
+    return `${endpointOverride.replace(/\/+$/, "")}/`;
+  }
+
+  return `https://cognito-idp.${resolveCognitoRegion()}.amazonaws.com/`;
+}
+
 function resolveCognitoClientId() {
   return requiredEnv("AUTH_COGNITO_USER_POOL_CLIENT_ID");
 }
@@ -129,8 +139,7 @@ function buildAuthParameters(email: string, password?: string) {
 }
 
 async function callCognito<T>(target: string, body: Record<string, unknown>): Promise<T> {
-  const endpoint = `https://cognito-idp.${resolveCognitoRegion()}.amazonaws.com/`;
-  const response = await fetch(endpoint, {
+  const response = await fetch(resolveCognitoEndpoint(), {
     method: "POST",
     headers: {
       "content-type": "application/x-amz-json-1.1",

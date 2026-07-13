@@ -1,8 +1,8 @@
-    # Business Plan - App Finances
+# Business Plan - Nexo
 
 ## 1. Resumen ejecutivo
 
-App Finances es una app web SaaS para generar y gestionar invoices de empresas de servicios en campo (cuadrillas, contratistas, crews) con una estructura de factura operativa y repetible.
+Nexo es una app web SaaS para generar y gestionar invoices de empresas de servicios en campo (cuadrillas, contratistas, crews) con una estructura de factura operativa y repetible.
 
 El objetivo es resolver tres problemas concretos:
 - Facturacion manual lenta.
@@ -28,7 +28,7 @@ Consecuencias:
 
 ## 3. Propuesta de valor
 
-App Finances ofrece:
+Nexo ofrece:
 - Creacion rapida de invoices con estructura fija.
 - Plantilla profesional lista para imprimir/exportar.
 - Estado de invoice (Draft, Sent, Paid) y control operativo.

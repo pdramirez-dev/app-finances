@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { buildAuditItem } from "./audit";
+import { buildAuditItem, resolveAuditEntityId } from "./audit";
 
 const base = {
   accountId: "ACC_A", actor: "user@x.com", action: "DELETE", entityType: "CLIENT",
@@ -27,4 +27,37 @@ test("carries actor, action, at, ttl and serialized data", () => {
 
 test("missing data serializes to null", () => {
   expect(buildAuditItem({ ...base, data: undefined }).data).toBeNull();
+});
+
+test("resolves camelCase IDs from RDS rows using audit metadata", () => {
+  expect(resolveAuditEntityId({ opportunityId: "OP-1" }, {}, "opportunityId")).toBe("OP-1");
+  expect(resolveAuditEntityId([{ paymentId: "PAY-1" }], {}, "paymentId")).toBe("PAY-1");
+});
+
+test("resolves delete IDs from direct args and put IDs from input", () => {
+  expect(resolveAuditEntityId(true, { projectId: "PRJ-1" }, "projectId")).toBe("PRJ-1");
+  expect(resolveAuditEntityId(null, { input: { taskId: "TSK-1" } }, "taskId")).toBe("TSK-1");
+});
+
+test("returns null when the configured ID is absent", () => {
+  expect(resolveAuditEntityId({ contactId: "C-1" }, {}, "projectId")).toBeNull();
+});
+
+test("supports CRM audit entity types and actions", () => {
+  const item = buildAuditItem({
+    ...base,
+    action: "RECONCILE",
+    entityType: "PAYMENT",
+    entityId: "PAY-1",
+  });
+  expect(item.entityKey).toBe("PAYMENT#PAY-1");
+  expect(item.action).toBe("RECONCILE");
+
+  const undone = buildAuditItem({
+    ...base,
+    action: "UNRECONCILE",
+    entityType: "PAYMENT",
+    entityId: "PAY-1",
+  });
+  expect(undone.action).toBe("UNRECONCILE");
 });

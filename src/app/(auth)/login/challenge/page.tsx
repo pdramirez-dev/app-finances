@@ -8,11 +8,11 @@ export default async function LoginChallengePage() {
   const session = await auth();
 
   if (session?.user) {
-    redirect("/invoices");
+    redirect("/dashboard");
   }
 
   return (
-    <AuthShell topActionHref="/login" topActionLabel="Login">
+    <AuthShell topActionHref="/login" topActionLabel="Iniciar sesión">
       <ChallengeForm />
     </AuthShell>
   );

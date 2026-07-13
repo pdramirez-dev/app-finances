@@ -1,8 +1,8 @@
-# Modelo de Costos - App Finances
+# Modelo de Costos - Nexo
 
 ## 1. Objetivo del modelo
 
-Este documento define un modelo de costos operativo para el MVP SaaS de App Finances.
+Este documento define un modelo de costos operativo para el MVP SaaS de Nexo.
 No es una cotizacion contable; es una base para toma de decisiones y control mensual.
 
 ## 2. Supuestos base
@@ -160,4 +160,3 @@ Resumen anual escenario B:
 - Clientes activos y churn.
 - Burn rate mensual.
 - Runway (meses de caja).
-

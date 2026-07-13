@@ -32,6 +32,106 @@ type InvoiceRaw = ListInvoicesQuery["listInvoices"]["items"][number] & {
   sections?: InvoiceSectionRaw[];
 };
 
+type DemoInvoiceInput = Record<string, unknown> & {
+  sections?: Array<Record<string, unknown> & { lineItems?: Array<Record<string, unknown>> }>;
+};
+
+function createDemoInvoice(
+  invoiceId: string,
+  invoiceNumber: number,
+  values: Omit<InvoiceRaw, "invoiceId" | "invoiceNumber" | "createdAt" | "updatedAt" | "sections">,
+  now: string,
+): InvoiceRaw {
+  const sectionId = `${invoiceId}-section`;
+  return {
+    invoiceId,
+    invoiceNumber,
+    ...values,
+    createdAt: now,
+    updatedAt: now,
+    sections: [
+      {
+        invoiceId,
+        sectionId,
+        title: values.project,
+        position: 0,
+        total: values.grandTotal,
+        lineItems: [
+          {
+            sectionId,
+            lineItemId: `${invoiceId}-line`,
+            description: values.project,
+            quantity: 1,
+            amount: values.grandTotal,
+            position: 0,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function initialDemoInvoices(): InvoiceRaw[] {
+  const now = new Date().toISOString();
+  return [
+    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
+  ];
+}
+
+function demoInvoiceStore() {
+  const demoGlobal = globalThis as typeof globalThis & {
+    __appFinancesDemoInvoices?: InvoiceRaw[];
+  };
+  demoGlobal.__appFinancesDemoInvoices ??= initialDemoInvoices();
+  return demoGlobal.__appFinancesDemoInvoices;
+}
+
+function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {
+  const invoices = demoInvoiceStore();
+  const now = new Date().toISOString();
+  const invoiceId = crypto.randomUUID();
+  const invoiceNumber = Math.max(1000, ...invoices.map((invoice) => invoice.invoiceNumber)) + 1;
+  const sections = (input.sections ?? []).map((section, sectionPosition) => {
+    const sectionId = crypto.randomUUID();
+    return {
+      invoiceId,
+      sectionId,
+      title: String(section.title ?? "Servicios"),
+      position: sectionPosition,
+      total: Number(section.total ?? 0),
+      lineItems: (section.lineItems ?? []).map((item, itemPosition) => ({
+        sectionId,
+        lineItemId: crypto.randomUUID(),
+        description: String(item.description ?? "Servicio"),
+        quantity: Number(item.quantity ?? 0),
+        amount: Number(item.amount ?? 0),
+        position: itemPosition,
+      })),
+    };
+  });
+
+  return {
+    invoiceId,
+    invoiceNumber,
+    date: String(input.date),
+    dueDate: input.dueDate ? String(input.dueDate) : null,
+    weekNumber: Number(input.weekNumber),
+    billToName: String(input.billToName),
+    billToAddress: String(input.billToAddress),
+    project: String(input.project),
+    currency: String(input.currency ?? "USD"),
+    notes: input.notes ? String(input.notes) : null,
+    grandTotal: Number(input.grandTotal),
+    status: "DRAFT",
+    createdAt: now,
+    updatedAt: now,
+    sections,
+  };
+}
+
 const LIST_INVOICES_QUERY = /* GraphQL */ `
   query ListInvoices($status: InvoiceStatus, $limit: Int, $nextToken: String) {
     listInvoices(status: $status, limit: $limit, nextToken: $nextToken) {
@@ -39,6 +139,7 @@ const LIST_INVOICES_QUERY = /* GraphQL */ `
         invoiceId
         invoiceNumber
         date
+        dueDate
         weekNumber
         billToName
         billToAddress
@@ -61,6 +162,7 @@ const GET_INVOICE_QUERY = /* GraphQL */ `
       invoiceId
       invoiceNumber
       date
+      dueDate
       weekNumber
       billToName
       billToAddress
@@ -96,6 +198,7 @@ const GET_INVOICE_BY_NUMBER_QUERY = /* GraphQL */ `
       invoiceId
       invoiceNumber
       date
+      dueDate
       weekNumber
       billToName
       billToAddress
@@ -116,6 +219,7 @@ const CREATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
       invoiceId
       invoiceNumber
       date
+      dueDate
       weekNumber
       billToName
       billToAddress
@@ -136,6 +240,7 @@ const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
       invoiceId
       invoiceNumber
       date
+      dueDate
       weekNumber
       billToName
       billToAddress
@@ -188,6 +293,7 @@ function normalizeInvoice(invoice: InvoiceRaw): InvoiceRecord {
     invoiceId: invoice.invoiceId,
     invoiceNumber: invoice.invoiceNumber,
     date: parseDate(invoice.date),
+    dueDate: invoice.dueDate ? parseDate(invoice.dueDate) : null,
     weekNumber: invoice.weekNumber,
     billToName: invoice.billToName,
     billToAddress: invoice.billToAddress,
@@ -208,20 +314,50 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
     const accountId = "00000000-0000-4000-8000-000000000001";
     const input = (variables?.input ?? {}) as Record<string, unknown>;
 
-    if (query.includes("ListInvoices")) return { listInvoices: { items: [], nextToken: null } } as T;
-    if (query.includes("GetInvoiceByNumber")) return { getInvoiceByNumber: null } as T;
-    if (query.includes("GetInvoice(")) return { getInvoice: null } as T;
+    if (query.includes("ListInvoices")) {
+      const status = variables?.status;
+      const items = demoInvoiceStore().filter((invoice) => !status || invoice.status === status);
+      return { listInvoices: { items, nextToken: null } } as T;
+    }
+    if (query.includes("GetInvoiceByNumber")) {
+      const invoice = demoInvoiceStore().find((item) => item.invoiceNumber === Number(variables?.invoiceNumber));
+      return { getInvoiceByNumber: invoice ?? null } as T;
+    }
+    if (query.includes("GetInvoice(")) {
+      const invoice = demoInvoiceStore().find((item) => item.invoiceId === variables?.invoiceId);
+      return { getInvoice: invoice ?? null } as T;
+    }
+    if (query.includes("CreateInvoiceFull")) {
+      const invoice = invoiceFromDemoInput(input);
+      demoInvoiceStore().unshift(invoice);
+      return { createInvoiceFull: invoice } as T;
+    }
+    if (query.includes("UpdateInvoiceStatus")) {
+      const invoice = demoInvoiceStore().find((item) => item.invoiceId === variables?.invoiceId);
+      if (!invoice) throw new Error("No se encontró la factura demo");
+      invoice.status = variables?.status as InvoiceStatus;
+      invoice.updatedAt = now;
+      return { updateInvoiceStatus: invoice } as T;
+    }
     if (query.includes("ListClients")) return { listClients: { items: [
-      { accountId, clientId: "10000000-0000-4000-8000-000000000001", name: "Acme Studio", email: "billing@acme.test", phone: "+1 555 0100", address: "100 Market Street", taxId: "US-10001" },
-      { accountId, clientId: "10000000-0000-4000-8000-000000000002", name: "Northwind Labs", email: "finance@northwind.test", phone: "+1 555 0132", address: "42 Lake Avenue", taxId: "US-10002" },
+      { accountId, clientId: "10000000-0000-4000-8000-000000000001", name: "Northline Logistics", email: "ops@northline.example", phone: "+1 407 555 0100", address: "4100 Tradeport Drive, Orlando, FL", taxId: "US-10001" },
+      { accountId, clientId: "10000000-0000-4000-8000-000000000002", name: "Greenridge Properties", email: "finance@greenridge.example", phone: "+1 813 555 0132", address: "1820 Lakeview Avenue, Tampa, FL", taxId: "US-10002" },
+      { accountId, clientId: "10000000-0000-4000-8000-000000000003", name: "Harborview Hospitality", email: "facilities@harborview.example", phone: "+1 305 555 0188", address: "600 Ocean Drive, Miami, FL", taxId: "US-10003" },
+      { accountId, clientId: "10000000-0000-4000-8000-000000000004", name: "MetroCare Facilities", email: "ap@metrocare.example", phone: "+1 407 555 0164", address: "75 Health Park Way, Kissimmee, FL", taxId: "US-10004" },
+      { accountId, clientId: "10000000-0000-4000-8000-000000000005", name: "BrightSpan Construction", email: "projects@brightspan.example", phone: "+1 863 555 0190", address: "901 Builder Lane, Lakeland, FL", taxId: "US-10005" },
     ], nextToken: null } } as T;
-    if (query.includes("GetAccount")) return { getAccount: { accountId, type: "COMPANY", displayName: "Lightning Services", legalName: "Lightning Services of Tampa LLC", taxId: "US-DEMO-01", email: "hello@lightning.test", phone: "+1 555 0199", address: "Tampa, Florida" } } as T;
+    if (query.includes("GetAccount")) return { getAccount: { accountId, type: "COMPANY", displayName: "SunPeak Field Services", legalName: "SunPeak Field Services LLC", taxId: "US-DEMO-01", email: "hello@sunpeak.example", phone: "+1 407 555 0199", address: "Orlando, Florida" } } as T;
     if (query.includes("GetMyMembership")) return { getMyMembership: { accountId, userId: "dev-user", role: "OWNER", status: "ACTIVE", createdAt: now, updatedAt: now } } as T;
     if (query.includes("PutAccount")) return { putAccount: { accountId, ...input, createdAt: now, updatedAt: now } } as T;
     if (query.includes("PutClient")) return { putClient: { accountId, clientId: input.clientId ?? crypto.randomUUID(), ...input, createdAt: now, updatedAt: now } } as T;
     if (query.includes("DeleteClient")) return { deleteClient: true } as T;
     if (query.includes("PutBankAccount")) return { putBankAccount: { accountId, bankAccountId: crypto.randomUUID(), ...input, createdAt: now, updatedAt: now } } as T;
-    if (query.includes("DeleteInvoice")) return { deleteInvoice: true } as T;
+    if (query.includes("DeleteInvoice")) {
+      const invoices = demoInvoiceStore();
+      const index = invoices.findIndex((invoice) => invoice.invoiceId === variables?.invoiceId);
+      if (index >= 0) invoices.splice(index, 1);
+      return { deleteInvoice: index >= 0 } as T;
+    }
     throw new Error("Esta operación no está disponible en el modo demo local");
   }
 

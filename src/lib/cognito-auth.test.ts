@@ -1,6 +1,10 @@
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
-import { buildRefreshPayload } from "./cognito-auth";
+import { buildRefreshPayload, resolveCognitoEndpoint } from "./cognito-auth";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 test("refresh payload uses REFRESH_TOKEN_AUTH", () => {
   expect(buildRefreshPayload("client", "refresh", null)).toEqual({
@@ -12,4 +16,10 @@ test("refresh payload uses REFRESH_TOKEN_AUTH", () => {
 
 test("refresh payload includes a secret hash when supplied", () => {
   expect(buildRefreshPayload("client", "refresh", "hash").AuthParameters.SECRET_HASH).toBe("hash");
+});
+
+test("Cognito endpoint can target LocalStack", () => {
+  vi.stubEnv("AUTH_COGNITO_ENDPOINT_URL", "http://localhost:4566/");
+
+  expect(resolveCognitoEndpoint()).toBe("http://localhost:4566/");
 });

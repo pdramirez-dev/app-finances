@@ -312,6 +312,7 @@ class AppFinancesBackendStack extends cdk.Stack {
         securedRdsResolver("QueryGetClient", "Query", "getClient", "query-get-client");
         securedRdsResolver("QueryGetBankAccount", "Query", "getBankAccount", "query-get-bank-account");
         securedRdsResolver("MutationPutInvoice", "Mutation", "putInvoice", "mutation-put-invoice");
+        securedRdsResolver("MutationCreateInvoiceFull", "Mutation", "createInvoiceFull", "mutation-create-invoice-full");
         securedRdsResolver("MutationPutClient", "Mutation", "putClient", "mutation-put-client");
         securedRdsResolver("MutationPutInvoiceSection", "Mutation", "putInvoiceSection", "mutation-put-invoice-section");
         securedRdsResolver("MutationPutInvoiceLineItem", "Mutation", "putInvoiceLineItem", "mutation-put-invoice-line-item");
@@ -320,6 +321,21 @@ class AppFinancesBackendStack extends cdk.Stack {
         securedRdsResolver("MutationDeleteInvoice", "Mutation", "deleteInvoice", "mutation-delete-invoice");
         securedRdsResolver("InvoiceSections", "Invoice", "sections", "invoice-sections");
         securedRdsResolver("InvoiceSectionLineItems", "InvoiceSection", "lineItems", "invoice-section-line-items");
+        securedRdsResolver("QueryGetContact", "Query", "getContact", "query-get-crm");
+        securedRdsResolver("QueryListContacts", "Query", "listContacts", "query-list-crm");
+        securedRdsResolver("QueryGetOpportunity", "Query", "getOpportunity", "query-get-crm");
+        securedRdsResolver("QueryListOpportunities", "Query", "listOpportunities", "query-list-crm");
+        securedRdsResolver("QueryGetProject", "Query", "getProject", "query-get-crm");
+        securedRdsResolver("QueryListProjects", "Query", "listProjects", "query-list-crm");
+        securedRdsResolver("QueryGetTask", "Query", "getTask", "query-get-crm");
+        securedRdsResolver("QueryListTasks", "Query", "listTasks", "query-list-crm");
+        securedRdsResolver("QueryGetCalendarEvent", "Query", "getCalendarEvent", "query-get-crm");
+        securedRdsResolver("QueryListCalendarEvents", "Query", "listCalendarEvents", "query-list-crm");
+        securedRdsResolver("QueryGetPayment", "Query", "getPayment", "query-get-crm");
+        securedRdsResolver("QueryListPayments", "Query", "listPayments", "query-list-crm");
+        securedRdsResolver("QueryListBankMovements", "Query", "listBankMovements", "query-list-crm");
+        securedRdsResolver("QueryGetCrmSummary", "Query", "getCrmSummary", "query-get-crm");
+        securedRdsResolver("QuerySearchWorkspace", "Query", "searchWorkspace", "query-list-crm");
         // Audit log pipeline resolvers for sensitive mutations
         const auditDs = graphqlApi.addDynamoDbDataSource("AuditLogDs", auditLogTable);
         const auditWriteFn = new appsync.AppsyncFunction(this, "AuditWriteFn", {
@@ -329,6 +345,41 @@ class AppFinancesBackendStack extends cdk.Stack {
             runtime: jsRuntime,
             code: resolverFromFile("dist/fn-audit-write.js"),
         });
+        const auditedRdsResolver = (id, fieldName, resolverFile) => {
+            const dataFn = new appsync.AppsyncFunction(this, `${id}RdsFn`, {
+                api: graphqlApi,
+                dataSource: rdsDs,
+                name: `${id}RdsFn`,
+                runtime: jsRuntime,
+                code: resolverFromFile(`dist/${resolverFile}.js`),
+            });
+            graphqlApi.createResolver(`${id}Resolver`, {
+                typeName: "Mutation",
+                fieldName,
+                runtime: jsRuntime,
+                code: resolverFromFile("dist/pipeline-crm-audit.js"),
+                pipelineConfig: [membershipGuardFn, dataFn, auditWriteFn],
+            });
+        };
+        auditedRdsResolver("MutationPutContact", "putContact", "mutation-put-crm");
+        auditedRdsResolver("MutationDeleteContact", "deleteContact", "mutation-delete-crm");
+        auditedRdsResolver("MutationSetContactFavorite", "setContactFavorite", "mutation-action-crm");
+        auditedRdsResolver("MutationPutOpportunity", "putOpportunity", "mutation-put-crm");
+        auditedRdsResolver("MutationDeleteOpportunity", "deleteOpportunity", "mutation-delete-crm");
+        auditedRdsResolver("MutationUpdateOpportunityStage", "updateOpportunityStage", "mutation-action-crm");
+        auditedRdsResolver("MutationPutProject", "putProject", "mutation-put-crm");
+        auditedRdsResolver("MutationDeleteProject", "deleteProject", "mutation-delete-crm");
+        auditedRdsResolver("MutationUpdateProjectStatus", "updateProjectStatus", "mutation-action-crm");
+        auditedRdsResolver("MutationPutTask", "putTask", "mutation-put-crm");
+        auditedRdsResolver("MutationDeleteTask", "deleteTask", "mutation-delete-crm");
+        auditedRdsResolver("MutationSetTaskCompleted", "setTaskCompleted", "mutation-action-crm");
+        auditedRdsResolver("MutationPutCalendarEvent", "putCalendarEvent", "mutation-put-crm");
+        auditedRdsResolver("MutationDeleteCalendarEvent", "deleteCalendarEvent", "mutation-delete-crm");
+        auditedRdsResolver("MutationRegisterPayment", "registerPayment", "mutation-action-crm");
+        auditedRdsResolver("MutationVoidPayment", "voidPayment", "mutation-action-crm");
+        auditedRdsResolver("MutationPutBankMovement", "putBankMovement", "mutation-action-crm");
+        auditedRdsResolver("MutationReconcilePayment", "reconcilePayment", "mutation-action-crm");
+        auditedRdsResolver("MutationUndoReconciliation", "undoReconciliation", "mutation-action-crm");
         const putAccountRdsFn = new appsync.AppsyncFunction(this, "PutAccountRdsFn", {
             api: graphqlApi,
             dataSource: rdsDs,

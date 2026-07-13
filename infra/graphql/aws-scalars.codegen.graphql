@@ -4,3 +4,5 @@ scalar AWSDate
 scalar AWSDateTime
 scalar AWSEmail
 scalar AWSPhone
+scalar AWSURL
+scalar AWSJSON

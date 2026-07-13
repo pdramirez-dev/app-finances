@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { FilePlus2 } from "lucide-react";
 
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { Button } from "@/components/ui/button";
@@ -14,17 +14,17 @@ export default async function NewInvoicePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="brand-chip border-white/25 bg-white/10 text-slate-100">
-            <Sparkles className="size-3.5 text-cyan-300" />
-            Create Flow
+          <p className="flex items-center gap-2 text-sm font-medium text-cyan-700">
+            <FilePlus2 className="size-4" />
+            Finanzas · Nueva factura
           </p>
-          <h1 className="brand-heading mt-3 text-3xl text-white">New Invoice</h1>
-          <p className="mt-1 text-sm text-slate-200">
-            Usa la estructura basada en tu plantilla actual.
+          <h1 className="brand-heading mt-2 text-3xl text-slate-950">Crear factura</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Vincula un cliente, añade conceptos y revisa el total.
           </p>
         </div>
-        <Button asChild variant="outline" className="border-white/25 bg-white/10 text-white hover:bg-white/20">
-          <Link href="/invoices">Back</Link>
+        <Button asChild variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+          <Link href="/invoices">Volver</Link>
         </Button>
       </div>
 

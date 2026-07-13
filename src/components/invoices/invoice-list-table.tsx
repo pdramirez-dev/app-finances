@@ -18,6 +18,12 @@ const statusClassMap: Record<InvoiceStatus, string> = {
   PAID: "bg-emerald-100 text-emerald-900 hover:bg-emerald-100",
 };
 
+const statusLabelMap: Record<InvoiceStatus, string> = {
+  DRAFT: "Borrador",
+  SENT: "Enviada",
+  PAID: "Pagada",
+};
+
 const statusFilterOptions: Array<InvoiceStatus | "ALL"> = ["ALL", "DRAFT", "SENT", "PAID"];
 
 type InvoiceListTableProps = {
@@ -50,10 +56,10 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
   if (invoices.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-        <p className="brand-heading text-lg text-slate-900">Aun no hay invoices</p>
-        <p className="mt-2 text-sm text-slate-600">Crea tu primer invoice para comenzar a operar el flujo.</p>
+        <p className="brand-heading text-lg text-slate-900">Aún no hay facturas</p>
+        <p className="mt-2 text-sm text-slate-600">Crea tu primera factura para comenzar a operar el flujo.</p>
         <Button asChild className="mt-5 bg-[#0a1226] text-white hover:bg-[#162448]">
-          <Link href="/invoices/new">Create Invoice</Link>
+          <Link href="/invoices/new">Crear factura</Link>
         </Button>
       </div>
     );
@@ -70,7 +76,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Invoice #, Bill To o Project"
+            placeholder="N.º, cliente o proyecto"
             className="border-slate-300 bg-white"
           />
         </div>
@@ -86,7 +92,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
           >
             {statusFilterOptions.map((option) => (
               <option key={option} value={option}>
-                {option === "ALL" ? "Todos" : option}
+                {option === "ALL" ? "Todos" : statusLabelMap[option]}
               </option>
             ))}
           </select>
@@ -116,11 +122,11 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
           <Table>
             <TableHeader className="bg-slate-100/80">
               <TableRow className="hover:bg-transparent">
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Bill To</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Grand Total</TableHead>
+                <TableHead>Factura</TableHead>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -136,7 +142,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
                   <TableCell>{format(new Date(invoice.date), "MM/dd/yyyy")}</TableCell>
                   <TableCell>{invoice.billToName}</TableCell>
                   <TableCell>
-                    <Badge className={statusClassMap[invoice.status]}>{invoice.status}</Badge>
+                    <Badge className={statusClassMap[invoice.status]}>{statusLabelMap[invoice.status]}</Badge>
                   </TableCell>
                   <TableCell className="text-right">{formatMoney(invoice.grandTotal)}</TableCell>
                   <TableCell className="text-right">
@@ -147,7 +153,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
                       className="border-slate-300 bg-white hover:bg-slate-100"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <Link href={`/invoices/${invoice.invoiceId}`}>View</Link>
+                      <Link href={`/invoices/${invoice.invoiceId}`}>Ver</Link>
                     </Button>
                   </TableCell>
                 </TableRow>

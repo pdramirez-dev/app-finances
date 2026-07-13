@@ -1,5 +1,5 @@
 export function request(ctx: any) {
-  ctx.stash.audit = { action: "STATUS_CHANGE", entityType: "INVOICE" };
+  ctx.stash.audit = { action: "STATUS_CHANGE", entityType: "INVOICE", entityIdField: "invoiceId" };
   return {};
 }
 

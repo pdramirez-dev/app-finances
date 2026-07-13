@@ -1,5 +1,6 @@
 import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
+import { requiresAdminRole } from "./lib/permissions";
 
 function identityKeys(ctx: any) {
   const claims = ctx.identity?.claims ?? {};
@@ -27,8 +28,7 @@ export function response(ctx: any) {
     util.unauthorized();
   }
 
-  const adminOnlyFields = ["putAccount", "putBankAccount", "deleteClient"];
-  if (adminOnlyFields.includes(ctx.info?.fieldName) && membership.role === "MEMBER") {
+  if (requiresAdminRole(ctx.info?.fieldName) && membership.role === "MEMBER") {
     util.unauthorized();
   }
 

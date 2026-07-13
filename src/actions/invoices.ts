@@ -49,6 +49,7 @@ export async function createInvoiceAction(
   const payloadResult = createInvoiceInputSchema.safeParse({
     clientId: formData.get("clientId"),
     date: formData.get("date"),
+    dueDate: formData.get("dueDate"),
     weekNumber: formData.get("weekNumber"),
     billToName: formData.get("billToName"),
     billToAddress: formData.get("billToAddress"),
@@ -66,6 +67,7 @@ export async function createInvoiceAction(
   const createdInvoice = await createInvoiceFull({
     clientId: payload.clientId,
     date: format(payload.date, "yyyy-MM-dd"),
+    dueDate: format(payload.dueDate, "yyyy-MM-dd"),
     weekNumber: payload.weekNumber,
     billToName: payload.billToName,
     billToAddress: payload.billToAddress,

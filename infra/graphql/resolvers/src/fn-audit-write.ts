@@ -1,17 +1,22 @@
 import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
-import { buildAuditItem } from "./lib/audit";
+import { buildAuditItem, resolveAuditEntityId } from "./lib/audit";
 
 const TWO_YEARS_SECONDS = 63072000;
 
 export function request(ctx: any) {
   const accountId = ctx.identity.claims["custom:accountId"];
   const actor = ctx.identity.claims.email ?? ctx.identity.sub;
-  const meta = ctx.stash.audit; // { action, entityType }
+  const meta = ctx.stash.audit; // { action, entityType, entityIdField? }
+  if (!meta) {
+    util.error("Audit metadata is required", "AuditConfigurationError");
+  }
   // entityId/data del resultado de la función RDS previa, con fallback a los args.
   const row = Array.isArray(ctx.prev?.result) ? ctx.prev.result[0] : ctx.prev?.result;
-  const entityId =
-    row?.id ?? ctx.args.invoiceId ?? ctx.args.clientId ?? ctx.args.bankAccountId ?? ctx.args.input?.id ?? "unknown";
+  const entityId = resolveAuditEntityId(ctx.prev?.result, ctx.args, meta.entityIdField);
+  if (!entityId) {
+    util.error("Audited entity ID is required", "AuditConfigurationError");
+  }
 
   const item = buildAuditItem({
     accountId,

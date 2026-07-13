@@ -14,6 +14,8 @@ const config: CodegenConfig = {
           AWSDateTime: "string",
           AWSEmail: "string",
           AWSPhone: "string",
+          AWSURL: "string",
+          AWSJSON: "unknown",
         },
       },
     },

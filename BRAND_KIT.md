@@ -1,12 +1,12 @@
-# App Finances Brand Kit
+# Nexo Brand Kit
 
 ## Brand Intent
 - Producto financiero-operativo para equipos de campo.
 - Tono visual: confiable, técnico y ágil.
 
 ## Logo
-- Monograma: `AF` en bloque cuadrado con borde.
-- Wordmark: `App Finances` en uppercase con tracking amplio.
+- Símbolo: barras ascendentes que representan conexión y progreso.
+- Wordmark: `Nexo` con una presencia compacta y clara.
 - Componente reusable: `src/components/brand/brand-mark.tsx`.
 
 ## Typography

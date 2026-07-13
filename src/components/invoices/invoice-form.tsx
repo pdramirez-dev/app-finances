@@ -42,6 +42,15 @@ function parseNumeric(value: string) {
 
 export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
   const [state, formAction, isPending] = useActionState(createInvoiceAction, initialState);
+  const [defaultDates] = useState(() => {
+    const issueDate = new Date();
+    const dueDate = new Date(issueDate);
+    dueDate.setDate(dueDate.getDate() + 30);
+    return {
+      issueDate: toDateInputValue(issueDate),
+      dueDate: toDateInputValue(dueDate),
+    };
+  });
   const [sections, setSections] = useState<EditableSection[]>(
     defaultSectionTemplate.map((section) => ({
       title: section.title,
@@ -111,7 +120,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
     setSections((previous) => [
       ...previous,
       {
-        title: `Crew (${previous.length + 1})`,
+        title: `Cuadrilla (${previous.length + 1})`,
         items: [newItem()],
       },
     ]);
@@ -162,27 +171,31 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
             <p className="text-xs text-slate-500">Vincula la factura al cliente dentro de la cuenta activa.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="weekNumber">Week Number</Label>
+            <Label htmlFor="weekNumber">Número de semana</Label>
             <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="date">Date</Label>
-            <Input id="date" name="date" type="date" defaultValue={toDateInputValue(new Date())} required />
+            <Label htmlFor="date">Fecha</Label>
+            <Input id="date" name="date" type="date" defaultValue={defaultDates.issueDate} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="project">Project</Label>
-            <Input id="project" name="project" placeholder="Crew (Michigan)" required />
+            <Label htmlFor="dueDate">Fecha de vencimiento</Label>
+            <Input id="dueDate" name="dueDate" type="date" defaultValue={defaultDates.dueDate} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="billToName">Bill To (Company)</Label>
-            <Input id="billToName" name="billToName" placeholder="TET Lighting Solution" required />
+            <Label htmlFor="project">Proyecto</Label>
+            <Input id="project" name="project" placeholder="Mantenimiento regional" required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="billToName">Facturar a</Label>
+            <Input id="billToName" name="billToName" placeholder="Nombre de la empresa" required />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="billToAddress">Bill To Address</Label>
+            <Label htmlFor="billToAddress">Dirección de facturación</Label>
             <Textarea id="billToAddress" name="billToAddress" rows={3} required />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="notes">Notes (optional)</Label>
+            <Label htmlFor="notes">Notas (opcional)</Label>
             <Textarea id="notes" name="notes" rows={3} />
           </div>
         </CardContent>
@@ -190,9 +203,9 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
 
       <Card className="brand-surface">
         <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <CardTitle className="brand-heading text-xl">Secciones de Crew</CardTitle>
+          <CardTitle className="brand-heading text-xl">Conceptos y cuadrillas</CardTitle>
           <Button type="button" variant="secondary" className="bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={addSection}>
-            Add Section
+            Añadir sección
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -209,7 +222,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
               >
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="min-w-60 flex-1 space-y-2">
-                    <Label>Section Title</Label>
+                    <Label>Título de la sección</Label>
                     <Input
                       value={section.title}
                       onChange={(event) =>
@@ -224,7 +237,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
                     className="border-slate-300 bg-white hover:bg-slate-100"
                     onClick={() => removeSection(sectionIndex)}
                     disabled={sections.length === 1}
-                    aria-label="Remove section"
+                    aria-label="Eliminar sección"
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -237,7 +250,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
                       className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 md:grid-cols-12"
                     >
                       <div className="space-y-2 md:col-span-6">
-                        <Label>Description</Label>
+                        <Label>Descripción</Label>
                         <Input
                           value={item.description}
                           onChange={(event) =>
@@ -246,7 +259,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
                         />
                       </div>
                       <div className="space-y-2 md:col-span-2">
-                        <Label>QTY</Label>
+                        <Label>Cant.</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -258,7 +271,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
                         />
                       </div>
                       <div className="space-y-2 md:col-span-3">
-                        <Label>Amount</Label>
+                        <Label>Precio</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -276,7 +289,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
                           className="border-slate-300 bg-white hover:bg-slate-100"
                           onClick={() => removeItem(sectionIndex, itemIndex)}
                           disabled={section.items.length === 1}
-                          aria-label="Remove item"
+                          aria-label="Eliminar concepto"
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -292,16 +305,16 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
                     className="border-slate-300 bg-white hover:bg-slate-100"
                     onClick={() => addItem(sectionIndex)}
                   >
-                    Add Line Item
+                    Añadir concepto
                   </Button>
-                  <p className="text-sm font-medium">Section Total: {formatMoney(sectionTotal)}</p>
+                  <p className="text-sm font-medium">Subtotal: {formatMoney(sectionTotal)}</p>
                 </div>
               </div>
             );
           })}
 
           <Separator />
-          <p className="brand-heading text-right text-xl text-slate-900">Grand Total: {formatMoney(grandTotal)}</p>
+          <p className="brand-heading text-right text-xl text-slate-900">Total: {formatMoney(grandTotal)}</p>
 
           {state.error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -312,7 +325,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
 
           <div className="flex justify-end">
             <Button type="submit" className="bg-[#0a1226] text-white hover:bg-[#162448]" disabled={isPending}>
-              {isPending ? "Creating..." : "Create Invoice"}
+              {isPending ? "Creando…" : "Crear factura"}
             </Button>
           </div>
         </CardContent>

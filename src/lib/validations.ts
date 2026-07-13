@@ -24,6 +24,11 @@ export const createInvoiceInputSchema = z.object({
     .min(1, "Date is required")
     .transform((value) => new Date(`${value}T00:00:00`))
     .refine((value) => !Number.isNaN(value.getTime()), "Invalid date"),
+  dueDate: z
+    .string()
+    .min(1, "Due date is required")
+    .transform((value) => new Date(`${value}T00:00:00`))
+    .refine((value) => !Number.isNaN(value.getTime()), "Invalid due date"),
   weekNumber: z.coerce.number().int().min(1).max(53),
   billToName: z.string().trim().min(1, "Bill to name is required"),
   billToAddress: z.string().trim().min(1, "Bill to address is required"),
@@ -35,6 +40,9 @@ export const createInvoiceInputSchema = z.object({
     .optional()
     .transform((value) => value || null),
   sections: invoiceSectionsInputSchema,
+}).refine((value) => value.dueDate >= value.date, {
+  path: ["dueDate"],
+  message: "Due date cannot be before the invoice date",
 });
 
 export type InvoiceLineItemInput = z.infer<typeof invoiceLineItemSchema>;

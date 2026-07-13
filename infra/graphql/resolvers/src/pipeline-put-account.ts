@@ -1,5 +1,5 @@
 export function request(ctx: any) {
-  ctx.stash.audit = { action: "UPDATE", entityType: "ACCOUNT" };
+  ctx.stash.audit = { action: "UPDATE", entityType: "ACCOUNT", entityIdField: "accountId" };
   return {};
 }
 

@@ -26,7 +26,7 @@ export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string
 }
 
 const INVOICE_COLS =
-  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", date, week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SECTION_COLS =
   `id AS "sectionId", invoice_id AS "invoiceId", title, position, total`;
@@ -35,7 +35,7 @@ const LINE_ITEM_COLS =
   `id AS "lineItemId", section_id AS "sectionId", description, quantity, amount, position`;
 
 const CLIENT_COLS =
-  `id AS "clientId", account_id AS "accountId", name, email, phone, address, tax_id AS "taxId", created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "clientId", account_id AS "accountId", name, email, phone, address, tax_id AS "taxId", industry, website, status, owner_user_id AS "ownerUserId", tags, notes, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const ACCOUNT_COLS =
   `id AS "accountId", type, display_name AS "displayName", legal_name AS "legalName", tax_id AS "taxId", email, phone, address, created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -117,14 +117,22 @@ export function getAccount(acc: string): SqlRequest {
 export function putClient(acc: string, args: { input: any }): SqlRequest {
   const i = args.input;
   return {
-    statement: `INSERT INTO clients (id, account_id, name, email, phone, address, tax_id, updated_at)
-                VALUES (COALESCE(:id, gen_random_uuid()), :acc, :name, :email, :phone, :address, :taxId, now())
+    statement: `INSERT INTO clients (id, account_id, name, email, phone, address, tax_id, industry,
+                  website, status, owner_user_id, tags, notes, updated_at)
+                VALUES (COALESCE(:id, gen_random_uuid()), :acc, :name, :email, :phone, :address, :taxId,
+                  :industry, :website, :status, :ownerUserId,
+                  ARRAY(SELECT jsonb_array_elements_text(CAST(:tags AS jsonb))), :notes, now())
                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email,
-                  phone = EXCLUDED.phone, address = EXCLUDED.address, tax_id = EXCLUDED.tax_id, updated_at = now()
+                  phone = EXCLUDED.phone, address = EXCLUDED.address, tax_id = EXCLUDED.tax_id,
+                  industry = EXCLUDED.industry, website = EXCLUDED.website, status = EXCLUDED.status,
+                  owner_user_id = EXCLUDED.owner_user_id, tags = EXCLUDED.tags, notes = EXCLUDED.notes,
+                  updated_at = now()
                 WHERE clients.account_id = :acc
                 RETURNING ${CLIENT_COLS}`,
     params: { id: i.clientId ?? null, acc, name: i.name, email: i.email ?? null,
-              phone: i.phone ?? null, address: i.address ?? null, taxId: i.taxId ?? null },
+              phone: i.phone ?? null, address: i.address ?? null, taxId: i.taxId ?? null,
+              industry: i.industry ?? null, website: i.website ?? null, status: i.status ?? "ACTIVE",
+              ownerUserId: i.ownerUserId ?? null, tags: JSON.stringify(i.tags ?? []), notes: i.notes ?? null },
   };
 }
 
@@ -175,12 +183,12 @@ export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest 
         SELECT :acc, 1 FROM valid_client
         ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
         RETURNING last_invoice_number)
-      INSERT INTO invoices (account_id, client_id, invoice_number, date, week_number, bill_to_name,
+      INSERT INTO invoices (account_id, client_id, invoice_number, date, due_date, week_number, bill_to_name,
         bill_to_address, project, currency, notes, grand_total, status)
-      SELECT :acc, valid_client.id, n.last_invoice_number, :date, :week, :billName, :billAddr, :project,
+      SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
         :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
       RETURNING ${INVOICE_COLS}`,
-    params: { acc, clientId: i.clientId ?? null, date: i.date, week: i.weekNumber,
+    params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
               currency: i.currency ?? "USD", notes: i.notes ?? null,
               grandTotal: i.grandTotal, status: i.status ?? "DRAFT" },
@@ -214,9 +222,9 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
         ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
         RETURNING last_invoice_number
       ), new_invoice AS (
-        INSERT INTO invoices (account_id, client_id, invoice_number, date, week_number, bill_to_name,
+        INSERT INTO invoices (account_id, client_id, invoice_number, date, due_date, week_number, bill_to_name,
           bill_to_address, project, currency, notes, grand_total, status)
-        SELECT :acc, valid_client.id, n.last_invoice_number, :date, :week, :billName, :billAddr, :project,
+        SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
           :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
         RETURNING *
       ), section_input AS (
@@ -237,7 +245,7 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
         RETURNING id
       )
       SELECT ${INVOICE_COLS} FROM new_invoice`,
-    params: { acc, clientId: i.clientId ?? null, date: i.date, week: i.weekNumber,
+    params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
               currency: i.currency ?? "USD", notes: i.notes ?? null,
               grandTotal: i.grandTotal, status: i.status ?? "DRAFT",

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       challengeName: "MFA_SETUP",
       challengeParameters: challenge.challengeParameters,
       session: response.Session,
-      totpIssuer: "App Finances",
+      totpIssuer: "Nexo",
       totpSecretCode: response.SecretCode,
     });
 
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         challengeName: "MFA_SETUP",
         challengeParameters: challenge.challengeParameters,
         session: response.Session,
-        totpIssuer: "App Finances",
+        totpIssuer: "Nexo",
         totpSecretCode: response.SecretCode,
       }),
     });

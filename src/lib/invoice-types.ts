@@ -24,6 +24,7 @@ export type InvoiceRecord = {
   invoiceId: string;
   invoiceNumber: number;
   date: Date;
+  dueDate: Date | null;
   weekNumber: number;
   billToName: string;
   billToAddress: string;

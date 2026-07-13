@@ -108,6 +108,45 @@ test("all domain resolvers run the membership guard first", () => {
   }
 });
 
+test("all CRM mutations are audited after the membership guard and RDS write", () => {
+  const t = synth();
+  const template = t.toJSON();
+  const guardId = Object.keys(template.Resources).find((id) => id.startsWith("RequireMembershipFn"));
+  const auditId = Object.keys(template.Resources).find((id) => id.startsWith("AuditWriteFn"));
+  expect(guardId).toBeTruthy();
+  expect(auditId).toBeTruthy();
+
+  const crmMutationFields = [
+    "putContact", "deleteContact", "setContactFavorite",
+    "putOpportunity", "deleteOpportunity", "updateOpportunityStage",
+    "putProject", "deleteProject", "updateProjectStatus",
+    "putTask", "deleteTask", "setTaskCompleted",
+    "putCalendarEvent", "deleteCalendarEvent",
+    "registerPayment", "voidPayment", "putBankMovement",
+    "reconcilePayment", "undoReconciliation",
+  ];
+  const resolvers = Object.values(t.findResources("AWS::AppSync::Resolver")) as Array<{
+    Properties: {
+      TypeName: string;
+      FieldName: string;
+      Kind?: string;
+      PipelineConfig?: { Functions?: Array<{ "Fn::GetAtt"?: [string, string] }> };
+    };
+  }>;
+
+  for (const fieldName of crmMutationFields) {
+    const resolver = resolvers.find((item) =>
+      item.Properties.TypeName === "Mutation" && item.Properties.FieldName === fieldName,
+    );
+    expect(resolver, `missing resolver for Mutation.${fieldName}`).toBeTruthy();
+    const functions = resolver?.Properties.PipelineConfig?.Functions ?? [];
+    expect(resolver?.Properties.Kind).toBe("PIPELINE");
+    expect(functions).toHaveLength(3);
+    expect(functions[0]?.["Fn::GetAtt"]?.[0]).toBe(guardId);
+    expect(functions[2]?.["Fn::GetAtt"]?.[0]).toBe(auditId);
+  }
+});
+
 test("creates AppSync and Lambda operational alarms", () => {
   const t = synth();
   t.resourceCountIs("AWS::CloudWatch::Alarm", 4);
