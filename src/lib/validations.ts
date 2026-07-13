@@ -18,6 +18,7 @@ export const invoiceSectionsInputSchema = z
   .min(1, "At least one section is required");
 
 export const createInvoiceInputSchema = z.object({
+  clientId: z.string().trim().optional().transform((value) => value || undefined),
   date: z
     .string()
     .min(1, "Date is required")

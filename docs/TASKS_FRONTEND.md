@@ -2,19 +2,19 @@
 
 ## En curso
 
-- [ ] Definir IA de navegación para módulos: Cuenta, Clientes, Configuración de pagos.
-- [ ] Definir estado de selección de cuenta activa (`accountId`) para sesión.
+- [x] Definir IA de navegación para módulos: Cuenta, Clientes, Configuración de pagos.
+- [x] Mostrar la cuenta activa desde la membresía validada por AppSync.
 
 ## Próximas
 
-- [ ] Pantalla de onboarding de cuenta (`SELF_EMPLOYED` o `COMPANY`).
-- [ ] Pantalla de perfil de cuenta (datos fiscales y contacto).
-- [ ] Pantalla de miembros y roles de cuenta (si tipo `COMPANY`).
-- [ ] CRUD de clientes con búsqueda y paginación.
-- [ ] Formulario de datos bancarios con campos enmascarados.
-- [ ] Conectar invoices a cliente y cuenta activa.
-- [ ] Manejo de errores de autorización multi-tenant en UI.
-- [ ] Estados vacíos y skeletons para nuevos módulos.
+- [x] Pantalla de onboarding de cuenta (`SELF_EMPLOYED` o `COMPANY`).
+- [x] Pantalla de perfil de cuenta (datos fiscales y contacto).
+- [x] Pantalla de membresía y rol del usuario actual.
+- [x] CRUD de clientes con búsqueda.
+- [x] Formulario de datos bancarios con campos enmascarados.
+- [x] Conectar invoices a cliente y cuenta activa.
+- [x] Mensajes de error de autorización y validación en formularios.
+- [x] Estados vacíos para nuevos módulos.
 
 ## Calidad UX
 

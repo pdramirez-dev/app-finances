@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { defaultSectionTemplate } from "@/lib/company";
+import type { Client } from "@/lib/appsync/workspace";
 import { formatMoney, toDateInputValue } from "@/lib/invoices";
 
 type EditableItem = {
@@ -39,7 +40,7 @@ function parseNumeric(value: string) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-export function InvoiceForm() {
+export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
   const [state, formAction, isPending] = useActionState(createInvoiceAction, initialState);
   const [sections, setSections] = useState<EditableSection[]>(
     defaultSectionTemplate.map((section) => ({
@@ -152,6 +153,14 @@ export function InvoiceForm() {
           <CardTitle className="brand-heading text-xl">Datos principales</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="clientId">Cliente guardado</Label>
+            <select id="clientId" name="clientId" className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+              <option value="">Sin cliente vinculado</option>
+              {clients.map((client) => <option key={client.clientId} value={client.clientId}>{client.name}</option>)}
+            </select>
+            <p className="text-xs text-slate-500">Vincula la factura al cliente dentro de la cuenta activa.</p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="weekNumber">Week Number</Label>
             <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} required />
@@ -195,7 +204,7 @@ export function InvoiceForm() {
 
             return (
               <div
-                key={`${sectionIndex}-${section.title}`}
+                key={sectionIndex}
                 className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4"
               >
                 <div className="flex flex-wrap items-center gap-3">
