@@ -83,10 +83,10 @@ function initialDemoInvoices(): InvoiceRaw[] {
 
 function demoInvoiceStore() {
   const demoGlobal = globalThis as typeof globalThis & {
-    __appFinancesDemoInvoices?: InvoiceRaw[];
+    __appNexoDemoInvoices?: InvoiceRaw[];
   };
-  demoGlobal.__appFinancesDemoInvoices ??= initialDemoInvoices();
-  return demoGlobal.__appFinancesDemoInvoices;
+  demoGlobal.__appNexoDemoInvoices ??= initialDemoInvoices();
+  return demoGlobal.__appNexoDemoInvoices;
 }
 
 function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {

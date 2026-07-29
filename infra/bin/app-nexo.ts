@@ -2,8 +2,8 @@
 import * as cdk from "aws-cdk-lib";
 
 import { STAGE_CONFIG, isStageName, type StageName } from "../lib/stage-config";
-import { AppFinancesBackendStack } from "../lib/stacks/backend-stack";
-import { AppFinancesFrontendStack } from "../lib/stacks/frontend-stack";
+import { AppNexoBackendStack } from "../lib/stacks/backend-stack";
+import { AppNexoFrontendStack } from "../lib/stacks/frontend-stack";
 
 const app = new cdk.App();
 
@@ -29,21 +29,21 @@ for (const stageRaw of requestedStages) {
     region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
   };
 
-  const backendStack = new AppFinancesBackendStack(app, `AppFinances-Backend-${stage}`, {
+  const backendStack = new AppNexoBackendStack(app, `AppNexo-Backend-${stage}`, {
     stage: config.stage,
     callbackUrls: config.callbackUrls,
     logoutUrls: config.logoutUrls,
     cognitoDomainPrefix,
     env,
     tags: {
-      Project: "app-finances",
+      Project: "app-nexo",
       Stage: stage,
       ManagedBy: "cdk",
       Layer: "backend",
     },
   });
 
-  const frontendStack = new AppFinancesFrontendStack(app, `AppFinances-Frontend-${stage}`, {
+  const frontendStack = new AppNexoFrontendStack(app, `AppNexo-Frontend-${stage}`, {
     stage: config.stage,
     appUrl: config.appUrl,
     amplifyBranchName: config.amplifyBranchName,
@@ -51,7 +51,7 @@ for (const stageRaw of requestedStages) {
     authSecret,
     env,
     tags: {
-      Project: "app-finances",
+      Project: "app-nexo",
       Stage: stage,
       ManagedBy: "cdk",
       Layer: "frontend",

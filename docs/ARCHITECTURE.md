@@ -1,6 +1,6 @@
 # Arquitectura implementada: CRM multi-tenant
 
-Este documento describe la arquitectura actual de `app-finances`. El sistema cubre cuentas, clientes, CRM comercial, operaciones, facturación, cobros y conciliación bancaria con persistencia en Aurora PostgreSQL.
+Este documento describe la arquitectura actual de `app-nexo`. El sistema cubre cuentas, clientes, CRM comercial, operaciones, facturación, cobros y conciliación bancaria con persistencia en Aurora PostgreSQL.
 
 ## Objetivo de negocio
 
@@ -167,19 +167,19 @@ La cobertura incluye validación del schema y documentos GraphQL, builders SQL, 
 Orden recomendado por stage:
 
 1. Compilar resolvers, ejecutar pruebas y sintetizar CDK.
-2. Desplegar `AppFinances-Backend-<stage>` con el contexto Cognito/secret correspondiente.
+2. Desplegar `AppNexo-Backend-<stage>` con el contexto Cognito/secret correspondiente.
 3. Aplicar las migraciones Aurora mediante RDS Data API:
 
    ```bash
    cd infra
    DB_CLUSTER_ARN='arn:aws:rds:...' \
    DB_SECRET_ARN='arn:aws:secretsmanager:...' \
-   DB_NAME='app_finances' \
+   DB_NAME='app_nexo' \
    npm run db:migrate:aurora
    ```
 
 4. Verificar consultas CRM, registro idempotente de pagos, conciliación y reversión.
-5. Desplegar `AppFinances-Frontend-<stage>`.
+5. Desplegar `AppNexo-Frontend-<stage>`.
 
 Los scripts `npm run cdk:deploy:dev` y `npm run cdk:deploy:prod` despliegan ambos stacks; para un cutover controlado se recomienda desplegarlos por nombre y ejecutar las migraciones entre backend y frontend.
 

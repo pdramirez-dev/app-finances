@@ -1,11 +1,11 @@
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { expect, test } from "vitest";
-import { AppFinancesBackendStack } from "../lib/stacks/backend-stack";
+import { AppNexoBackendStack } from "../lib/stacks/backend-stack";
 
 function synth() {
   const app = new App();
-  const stack = new AppFinancesBackendStack(app, "Test", {
+  const stack = new AppNexoBackendStack(app, "Test", {
     stage: "dev",
     callbackUrls: ["http://localhost:3000"],
     logoutUrls: ["http://localhost:3000"],
@@ -30,13 +30,13 @@ test("domain DynamoDB tables are removed; only the three kept tables remain", ()
   const tables = t.findResources("AWS::DynamoDB::Table");
   const names = Object.values(tables).map((r: any) => r.Properties.TableName);
   for (const removed of [
-    "app-finances-dev-invoices",
-    "app-finances-dev-invoice-sections",
-    "app-finances-dev-invoice-line-items",
-    "app-finances-dev-invoice-counters",
-    "app-finances-dev-accounts",
-    "app-finances-dev-clients",
-    "app-finances-dev-bank-accounts",
+    "app-nexo-dev-invoices",
+    "app-nexo-dev-invoice-sections",
+    "app-nexo-dev-invoice-line-items",
+    "app-nexo-dev-invoice-counters",
+    "app-nexo-dev-accounts",
+    "app-nexo-dev-clients",
+    "app-nexo-dev-bank-accounts",
   ]) {
     if (names.includes(removed)) throw new Error(`removed table still present: ${removed}`);
   }

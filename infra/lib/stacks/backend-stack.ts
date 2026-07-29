@@ -13,7 +13,7 @@ import { Construct } from "constructs";
 
 import type { StageName } from "../stage-config";
 
-export type AppFinancesBackendStackProps = cdk.StackProps & {
+export type AppNexoBackendStackProps = cdk.StackProps & {
   stage: StageName;
   callbackUrls: string[];
   logoutUrls: string[];
@@ -90,17 +90,17 @@ function resolverFromFile(fileName: string) {
   return appsync.Code.fromAsset(path.join(process.cwd(), "graphql", "resolvers", fileName));
 }
 
-export class AppFinancesBackendStack extends cdk.Stack {
+export class AppNexoBackendStack extends cdk.Stack {
   public readonly exports: BackendExports;
 
-  constructor(scope: Construct, id: string, props: AppFinancesBackendStackProps) {
+  constructor(scope: Construct, id: string, props: AppNexoBackendStackProps) {
     super(scope, id, props);
 
     const isProd = props.stage === "prod";
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
     const invoicePdfMetadataTable = new dynamodb.Table(this, "InvoicePdfMetadataTable", {
-      tableName: `app-finances-${props.stage}-invoice-pdf-metadata`,
+      tableName: `app-nexo-${props.stage}-invoice-pdf-metadata`,
       partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "version", type: dynamodb.AttributeType.NUMBER },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -117,7 +117,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     });
 
     const userMembershipsTable = new dynamodb.Table(this, "UserMembershipsTable", {
-      tableName: `app-finances-${props.stage}-user-memberships`,
+      tableName: `app-nexo-${props.stage}-user-memberships`,
       partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -134,7 +134,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     });
 
     const auditLogTable = new dynamodb.Table(this, "AuditLogTable", {
-      tableName: `app-finances-${props.stage}-audit-log`,
+      tableName: `app-nexo-${props.stage}-audit-log`,
       partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -177,7 +177,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
       serverlessV2MinCapacity: 0,
       serverlessV2MaxCapacity: 2,
       enableDataApi: true,
-      defaultDatabaseName: "app_finances",
+      defaultDatabaseName: "app_nexo",
       writer: rds.ClusterInstance.serverlessV2("Writer"),
       backup: { retention: cdk.Duration.days(7) },
       storageEncrypted: true,
@@ -188,7 +188,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     new cdk.CfnOutput(this, "DomainDbSecretArn", { value: dbCluster.secret!.secretArn });
 
     const userPool = new cognito.UserPool(this, "UserPool", {
-      userPoolName: `app-finances-${props.stage}-users`,
+      userPoolName: `app-nexo-${props.stage}-users`,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       standardAttributes: {
@@ -211,7 +211,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     });
 
     const userPoolClient = userPool.addClient("WebClient", {
-      userPoolClientName: `app-finances-${props.stage}-web-client`,
+      userPoolClientName: `app-nexo-${props.stage}-web-client`,
       authFlows: {
         userSrp: true,
         userPassword: true,
@@ -233,7 +233,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
       refreshTokenValidity: cdk.Duration.days(30),
     });
 
-    const domainPrefix = props.cognitoDomainPrefix ?? `app-finances-${props.stage}`;
+    const domainPrefix = props.cognitoDomainPrefix ?? `app-nexo-${props.stage}`;
     const userPoolDomain = userPool.addDomain("CognitoDomain", {
       cognitoDomain: { domainPrefix },
       managedLoginVersion: cognito.ManagedLoginVersion.CLASSIC_HOSTED_UI,
@@ -267,7 +267,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     invoicePdfsBucket.grantReadWrite(generateInvoicePdfFn);
 
     const graphqlApi = new appsync.GraphqlApi(this, "AppSyncApi", {
-      name: `app-finances-${props.stage}-graphql`,
+      name: `app-nexo-${props.stage}-graphql`,
       definition: appsync.Definition.fromFile(path.join(process.cwd(), "graphql", "schema.graphql")),
       xrayEnabled: true,
       authorizationConfig: {

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 
 import type { SafeChallenge } from "@/lib/auth-flow-tickets";
 
-const challengeStorageKey = "app-finances-auth-challenge";
+const challengeStorageKey = "app-nexo-auth-challenge";
 const listeners = new Set<() => void>();
 let cachedRawValue: string | null | undefined;
 let cachedChallenge: StoredChallengeState | null = null;

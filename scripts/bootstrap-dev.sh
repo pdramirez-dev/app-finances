@@ -163,7 +163,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 INFRA_DIR="$REPO_ROOT/infra"
 ENV_FILE="$REPO_ROOT/.env"
-STACK_NAME="AppFinances-Backend-dev"
+STACK_NAME="AppNexo-Backend-dev"
 
 if [[ -z "$ACCOUNT_ID" ]]; then
   ACCOUNT_ID="$(read_env "$ENV_FILE" "APP_ACCOUNT_ID")"
@@ -209,7 +209,7 @@ if [[ "$DEPLOY_FRONTEND" == "true" ]]; then
   echo "Desplegando frontend dev..."
   (
     cd "$INFRA_DIR"
-    npx cdk deploy "AppFinances-Frontend-dev" \
+    npx cdk deploy "AppNexo-Frontend-dev" \
       --require-approval never \
       -c stages=dev \
       -c devCognitoDomainPrefix="$DOMAIN_PREFIX" \
@@ -276,7 +276,7 @@ DB_CLUSTER_ARN="$DB_CLUSTER_ARN" DB_SECRET_ARN="$DB_SECRET_ARN" npm --prefix "$I
 aws rds-data execute-statement \
   --resource-arn "$DB_CLUSTER_ARN" \
   --secret-arn "$DB_SECRET_ARN" \
-  --database app_finances \
+  --database app_nexo \
   --region "$REGION" \
   --sql "INSERT INTO accounts (id, type, display_name) VALUES (CAST(:id AS uuid), 'COMPANY'::account_type, :name) ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = now()" \
   --parameters "[{\"name\":\"id\",\"value\":{\"stringValue\":\"$ACCOUNT_ID\"}},{\"name\":\"name\",\"value\":{\"stringValue\":\"$ACCOUNT_NAME\"}}]" >/dev/null

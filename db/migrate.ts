@@ -4,7 +4,7 @@ import { SqlMigrationSource } from "./knex-migration-source";
 
 const MIGRATIONS_DIR = join(__dirname, "migrations");
 const KNEX_MIGRATIONS_TABLE = "knex_migrations";
-const MIGRATION_LOCK = "app_finances_schema_migrations";
+const MIGRATION_LOCK = "app_nexo_schema_migrations";
 
 function migrationConfig(source: SqlMigrationSource): Knex.MigratorConfig {
   return {

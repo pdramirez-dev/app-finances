@@ -29,8 +29,8 @@ Trust policy para este repo:
         },
         "StringLike": {
           "token.actions.githubusercontent.com:sub": [
-            "repo:pdramirez-dev/app-finances:ref:refs/heads/main",
-            "repo:pdramirez-dev/app-finances:ref:refs/heads/develop"
+            "repo:pdramirez-dev/app-nexo:ref:refs/heads/main",
+            "repo:pdramirez-dev/app-nexo:ref:refs/heads/develop"
           ]
         }
       }
@@ -66,7 +66,7 @@ Puedes restringir el `Resource` a los ARN de tus apps de Amplify cuando tengas l
 En GitHub, configura estas repository variables:
 
 - `AWS_REGION`: región AWS, por ejemplo `us-east-1`
-- `AWS_ROLE_TO_ASSUME`: ARN del rol OIDC, por ejemplo `arn:aws:iam::<AWS_ACCOUNT_ID>:role/app-finances-actions-deploy`
+- `AWS_ROLE_TO_ASSUME`: ARN del rol OIDC, por ejemplo `arn:aws:iam::<AWS_ACCOUNT_ID>:role/app-nexo-actions-deploy`
 - `AMPLIFY_APP_ID_PROD`: app id de Amplify para prod
 - `AMPLIFY_APP_ID_DEV`: app id de Amplify para dev
 

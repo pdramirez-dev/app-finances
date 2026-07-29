@@ -4,7 +4,7 @@ import { runMigrations } from "./migrate";
 
 const DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
-  "postgres://app:app@localhost:55432/app_finances_test";
+  "postgres://app:app@localhost:55432/app_nexo_test";
 
 const dbAvailable = await (async () => {
   const probe = new Client({ connectionString: DATABASE_URL, connectionTimeoutMillis: 2000 });

@@ -94,7 +94,7 @@ Aurora mediante RDS Data API:
 cd infra
 DB_CLUSTER_ARN='arn:aws:rds:...' \
 DB_SECRET_ARN='arn:aws:secretsmanager:...' \
-DB_NAME='app_finances' \
+DB_NAME='app_nexo' \
 npm run db:migrate:aurora
 ```
 
@@ -128,16 +128,16 @@ npm run cdk:synth
 
 `infra/` define dos stacks por entorno:
 
-- `AppFinances-Backend-<stage>`: Cognito, AppSync, Aurora, DynamoDB, S3, Lambda PDF y alarmas.
-- `AppFinances-Frontend-<stage>`: Amplify Hosting, configurado con los outputs del backend.
+- `AppNexo-Backend-<stage>`: Cognito, AppSync, Aurora, DynamoDB, S3, Lambda PDF y alarmas.
+- `AppNexo-Frontend-<stage>`: Amplify Hosting, configurado con los outputs del backend.
 
 Secuencia recomendada para evitar que el frontend consulte tablas aún no migradas:
 
 1. Compilar y validar resolvers e infraestructura.
-2. Desplegar `AppFinances-Backend-<stage>`.
+2. Desplegar `AppNexo-Backend-<stage>`.
 3. Aplicar todas las migraciones de Aurora, incluidas `0003` y `0004`.
 4. Verificar AppSync y los invariantes de conciliación.
-5. Desplegar `AppFinances-Frontend-<stage>`.
+5. Desplegar `AppNexo-Frontend-<stage>`.
 
 Los scripts agrupados están disponibles en `infra/package.json`:
 
@@ -147,7 +147,7 @@ npm run cdk:deploy:dev -- -c devCognitoDomainPrefix=<unique-prefix-dev> -c devAu
 npm run cdk:deploy:prod -- -c prodCognitoDomainPrefix=<unique-prefix-prod> -c prodAuthSecret=<strong-secret>
 ```
 
-Para un despliegue escalonado puede usarse `npx cdk deploy AppFinances-Backend-<stage>` y, después de migrar, `npx cdk deploy AppFinances-Frontend-<stage>` con el mismo contexto del entorno.
+Para un despliegue escalonado puede usarse `npx cdk deploy AppNexo-Backend-<stage>` y, después de migrar, `npx cdk deploy AppNexo-Frontend-<stage>` con el mismo contexto del entorno.
 
 ## Bootstrap dev
 

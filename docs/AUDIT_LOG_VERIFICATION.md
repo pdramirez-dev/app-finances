@@ -1,7 +1,7 @@
 # Audit Log — Post-Deploy Verification (Foundation Plan 3)
 
 The audit log records an append-only trace of sensitive actions in the
-`app-finances-<stage>-audit-log` DynamoDB table. Each sensitive mutation is an
+`app-nexo-<stage>-audit-log` DynamoDB table. Each sensitive mutation is an
 AppSync **pipeline resolver** of two functions: (1) the RDS function runs the
 Postgres mutation (Plan 2), (2) `AuditWriteFn` writes the audit entry to
 DynamoDB using the mutation result and the Cognito claims. Because the audit
@@ -39,12 +39,12 @@ verified manually below.
 
 ## Manual verification (post-deploy)
 
-1. Deploy: `cd infra && npx cdk deploy AppFinances-Backend-dev`.
+1. Deploy: `cd infra && npx cdk deploy AppNexo-Backend-dev`.
 2. As a user of account **A**, run `updateInvoiceStatus` on an invoice you own.
 3. Query the audit table and confirm an entry exists:
    ```bash
    aws dynamodb query \
-     --table-name app-finances-dev-audit-log \
+     --table-name app-nexo-dev-audit-log \
      --key-condition-expression "accountId = :a" \
      --expression-attribute-values '{":a":{"S":"<ACCOUNT_A_ID>"}}'
    ```

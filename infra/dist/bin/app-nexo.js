@@ -55,20 +55,20 @@ for (const stageRaw of requestedStages) {
         account: process.env.CDK_DEFAULT_ACCOUNT,
         region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
     };
-    const backendStack = new backend_stack_1.AppFinancesBackendStack(app, `AppFinances-Backend-${stage}`, {
+    const backendStack = new backend_stack_1.AppNexoBackendStack(app, `AppNexo-Backend-${stage}`, {
         stage: config.stage,
         callbackUrls: config.callbackUrls,
         logoutUrls: config.logoutUrls,
         cognitoDomainPrefix,
         env,
         tags: {
-            Project: "app-finances",
+            Project: "app-nexo",
             Stage: stage,
             ManagedBy: "cdk",
             Layer: "backend",
         },
     });
-    const frontendStack = new frontend_stack_1.AppFinancesFrontendStack(app, `AppFinances-Frontend-${stage}`, {
+    const frontendStack = new frontend_stack_1.AppNexoFrontendStack(app, `AppNexo-Frontend-${stage}`, {
         stage: config.stage,
         appUrl: config.appUrl,
         amplifyBranchName: config.amplifyBranchName,
@@ -76,7 +76,7 @@ for (const stageRaw of requestedStages) {
         authSecret,
         env,
         tags: {
-            Project: "app-finances",
+            Project: "app-nexo",
             Stage: stage,
             ManagedBy: "cdk",
             Layer: "frontend",

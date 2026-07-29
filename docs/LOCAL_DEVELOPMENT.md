@@ -33,7 +33,7 @@ export LOCALSTACK_AUTH_TOKEN='...'
 npm run local:aws:up
 ```
 
-El hook idempotente escribe los identificadores y variables resultantes en `.localstack/app-finances.env`. Para validar el entorno:
+El hook idempotente escribe los identificadores y variables resultantes en `.localstack/app-nexo.env`. Para validar el entorno:
 
 ```bash
 npm run local:aws:smoke
@@ -43,7 +43,7 @@ Aplicar las migraciones con Knex y después iniciar el frontend en modo demo:
 
 ```bash
 set -a
-source .localstack/app-finances.env
+source .localstack/app-nexo.env
 set +a
 npm run db:migrate
 npm run dev
@@ -73,7 +73,7 @@ bash scripts/localstack-up.sh
 bash scripts/localstack-smoke.sh
 ```
 
-El backend de autenticación reconoce `AUTH_COGNITO_ENDPOINT_URL=http://localhost:4566`, por lo que sus llamadas directas pueden llegar al emulador. El usuario inicial es `admin@app-finances.local` con contraseña `LocalPass123!`; ambos valores pueden sobreescribirse antes de arrancar.
+El backend de autenticación reconoce `AUTH_COGNITO_ENDPOINT_URL=http://localhost:4566`, por lo que sus llamadas directas pueden llegar al emulador. El usuario inicial es `admin@app-nexo.local` con contraseña `LocalPass123!`; ambos valores pueden sobreescribirse antes de arrancar.
 
 ## Límites deliberados
 

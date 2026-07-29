@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/client-rds-data";
 import { splitSqlStatements } from "./sql-split.js";
 
-const { DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME = "app_finances" } = process.env;
+const { DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME = "app_nexo" } = process.env;
 if (!DB_CLUSTER_ARN || !DB_SECRET_ARN) throw new Error("DB_CLUSTER_ARN and DB_SECRET_ARN are required");
 
 const client = new RDSDataClient({});
@@ -46,7 +46,7 @@ async function main() {
 
     try {
       await exec(
-        "SELECT pg_advisory_xact_lock(hashtext('app_finances_schema_migrations'))",
+        "SELECT pg_advisory_xact_lock(hashtext('app_nexo_schema_migrations'))",
         transactionId,
       );
       const existing = await exec(

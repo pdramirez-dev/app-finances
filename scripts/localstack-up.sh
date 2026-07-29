@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.local.yml"
-RUNTIME_ENV="$ROOT_DIR/.localstack/app-finances.env"
+RUNTIME_ENV="$ROOT_DIR/.localstack/app-nexo.env"
 
 mkdir -p "$ROOT_DIR/.localstack"
 
@@ -28,7 +28,7 @@ for _ in $(seq 1 60); do
     echo "Entorno local listo."
     echo "Variables generadas: $RUNTIME_ENV"
     echo "Prueba AWS local: bash scripts/localstack-smoke.sh"
-    echo "Frontend demo:  set -a; source .localstack/app-finances.env; set +a; npm run dev"
+    echo "Frontend demo:  set -a; source .localstack/app-nexo.env; set +a; npm run dev"
     exit 0
   fi
   sleep 1

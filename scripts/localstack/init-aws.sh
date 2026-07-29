@@ -3,9 +3,9 @@ set -eu
 
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 ACCOUNT_ID="${LOCAL_ACCOUNT_ID:-00000000-0000-4000-8000-000000000001}"
-ADMIN_EMAIL="${LOCAL_COGNITO_EMAIL:-admin@app-finances.local}"
+ADMIN_EMAIL="${LOCAL_COGNITO_EMAIL:-admin@app-nexo.local}"
 ADMIN_PASSWORD="${LOCAL_COGNITO_PASSWORD:-LocalPass123!}"
-RUNTIME_ENV="/var/lib/localstack/app-finances.env"
+RUNTIME_ENV="/var/lib/localstack/app-nexo.env"
 
 ensure_table() {
   table_name="$1"
@@ -18,7 +18,7 @@ ensure_table() {
 }
 
 ensure_table \
-  app-finances-local-invoice-pdf-metadata \
+  app-nexo-local-invoice-pdf-metadata \
   --attribute-definitions \
     AttributeName=invoiceId,AttributeType=S \
     AttributeName=version,AttributeType=N \
@@ -32,7 +32,7 @@ ensure_table \
   --billing-mode PAY_PER_REQUEST
 
 ensure_table \
-  app-finances-local-user-memberships \
+  app-nexo-local-user-memberships \
   --attribute-definitions \
     AttributeName=accountId,AttributeType=S \
     AttributeName=userId,AttributeType=S \
@@ -44,7 +44,7 @@ ensure_table \
   --billing-mode PAY_PER_REQUEST
 
 ensure_table \
-  app-finances-local-audit-log \
+  app-nexo-local-audit-log \
   --attribute-definitions \
     AttributeName=accountId,AttributeType=S \
     AttributeName=sk,AttributeType=S \
@@ -57,11 +57,11 @@ ensure_table \
   --billing-mode PAY_PER_REQUEST
 
 awslocal dynamodb update-time-to-live \
-  --table-name app-finances-local-audit-log \
+  --table-name app-nexo-local-audit-log \
   --time-to-live-specification Enabled=true,AttributeName=ttl >/dev/null 2>&1 || true
 
-if ! awslocal s3api head-bucket --bucket app-finances-local-invoice-pdfs >/dev/null 2>&1; then
-  awslocal s3api create-bucket --bucket app-finances-local-invoice-pdfs --region "$REGION" >/dev/null
+if ! awslocal s3api head-bucket --bucket app-nexo-local-invoice-pdfs >/dev/null 2>&1; then
+  awslocal s3api create-bucket --bucket app-nexo-local-invoice-pdfs --region "$REGION" >/dev/null
 fi
 
 POOL_ID="local-cognito-disabled"
@@ -71,12 +71,12 @@ USER_ID="dev-user"
 if [ "${LOCALSTACK_ENABLE_COGNITO:-false}" = "true" ]; then
   POOL_ID="$(awslocal cognito-idp list-user-pools \
     --max-results 60 \
-    --query "UserPools[?Name=='app-finances-local-users'].Id | [0]" \
+    --query "UserPools[?Name=='app-nexo-local-users'].Id | [0]" \
     --output text)"
 
   if [ -z "$POOL_ID" ] || [ "$POOL_ID" = "None" ]; then
     POOL_ID="$(awslocal cognito-idp create-user-pool \
-      --pool-name app-finances-local-users \
+      --pool-name app-nexo-local-users \
       --username-attributes email \
       --auto-verified-attributes email \
       --schema 'Name=accountId,AttributeDataType=String,Mutable=false,Required=false' \
@@ -87,13 +87,13 @@ if [ "${LOCALSTACK_ENABLE_COGNITO:-false}" = "true" ]; then
   CLIENT_ID="$(awslocal cognito-idp list-user-pool-clients \
     --user-pool-id "$POOL_ID" \
     --max-results 60 \
-    --query "UserPoolClients[?ClientName=='app-finances-local-web-client'].ClientId | [0]" \
+    --query "UserPoolClients[?ClientName=='app-nexo-local-web-client'].ClientId | [0]" \
     --output text)"
 
   if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "None" ]; then
     CLIENT_ID="$(awslocal cognito-idp create-user-pool-client \
       --user-pool-id "$POOL_ID" \
-      --client-name app-finances-local-web-client \
+      --client-name app-nexo-local-web-client \
       --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH \
       --prevent-user-existence-errors ENABLED \
       --query UserPoolClient.ClientId \
@@ -128,7 +128,7 @@ fi
 
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 awslocal dynamodb put-item \
-  --table-name app-finances-local-user-memberships \
+  --table-name app-nexo-local-user-memberships \
   --item "{\"accountId\":{\"S\":\"$ACCOUNT_ID\"},\"userId\":{\"S\":\"$USER_ID\"},\"role\":{\"S\":\"OWNER\"},\"status\":{\"S\":\"ACTIVE\"},\"createdAt\":{\"S\":\"$NOW\"},\"updatedAt\":{\"S\":\"$NOW\"}}" >/dev/null
 
 cat >"$RUNTIME_ENV" <<EOF
@@ -137,7 +137,7 @@ AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 AWS_DEFAULT_REGION=$REGION
 AWS_ENDPOINT_URL=http://localhost:4566
-DATABASE_URL=postgresql://${LOCAL_POSTGRES_USER:-app}:${LOCAL_POSTGRES_PASSWORD:-app}@localhost:${LOCAL_POSTGRES_PORT:-5432}/${LOCAL_POSTGRES_DB:-app_finances}
+DATABASE_URL=postgresql://${LOCAL_POSTGRES_USER:-app}:${LOCAL_POSTGRES_PASSWORD:-app}@localhost:${LOCAL_POSTGRES_PORT:-5432}/${LOCAL_POSTGRES_DB:-app_nexo}
 AUTH_COGNITO_ENDPOINT_URL=http://localhost:4566
 AUTH_COGNITO_USER_POOL_ID=$POOL_ID
 AUTH_COGNITO_USER_POOL_CLIENT_ID=$CLIENT_ID
@@ -149,10 +149,10 @@ DEV_AUTH_BYPASS=true
 AUTH_SECRET=local-only-auth-secret-change-me
 AUTH_URL=http://localhost:3000
 APP_ACCOUNT_ID=$ACCOUNT_ID
-INVOICE_PDF_METADATA_TABLE_NAME=app-finances-local-invoice-pdf-metadata
-USER_MEMBERSHIPS_TABLE_NAME=app-finances-local-user-memberships
-AUDIT_LOG_TABLE_NAME=app-finances-local-audit-log
-INVOICE_PDFS_BUCKET_NAME=app-finances-local-invoice-pdfs
+INVOICE_PDF_METADATA_TABLE_NAME=app-nexo-local-invoice-pdf-metadata
+USER_MEMBERSHIPS_TABLE_NAME=app-nexo-local-user-memberships
+AUDIT_LOG_TABLE_NAME=app-nexo-local-audit-log
+INVOICE_PDFS_BUCKET_NAME=app-nexo-local-invoice-pdfs
 EOF
 
 echo "App Finances local AWS resources are ready."

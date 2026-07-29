@@ -33,15 +33,15 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AppFinancesFrontendStack = void 0;
+exports.AppNexoFrontendStack = void 0;
 const cdk = __importStar(require("aws-cdk-lib"));
 const amplify = __importStar(require("aws-cdk-lib/aws-amplify"));
-class AppFinancesFrontendStack extends cdk.Stack {
+class AppNexoFrontendStack extends cdk.Stack {
     constructor(scope, id, props) {
         super(scope, id, props);
         const isProd = props.stage === "prod";
         const amplifyApp = new amplify.CfnApp(this, "AmplifyApp", {
-            name: `app-finances-${props.stage}`,
+            name: `app-nexo-${props.stage}`,
             platform: "WEB_COMPUTE",
             description: `Amplify frontend app for stage ${props.stage}`,
             enableBranchAutoDeletion: !isProd,
@@ -69,4 +69,4 @@ class AppFinancesFrontendStack extends cdk.Stack {
         new cdk.CfnOutput(this, "AmplifyAppId", { value: amplifyApp.attrAppId });
     }
 }
-exports.AppFinancesFrontendStack = AppFinancesFrontendStack;
+exports.AppNexoFrontendStack = AppNexoFrontendStack;

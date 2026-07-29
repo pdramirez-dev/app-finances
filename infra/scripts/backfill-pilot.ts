@@ -11,7 +11,7 @@ const {
   AWS_REGION,
   DB_CLUSTER_ARN,
   DB_SECRET_ARN,
-  DB_NAME = "app_finances",
+  DB_NAME = "app_nexo",
   PILOT_ACCOUNT_ID,
   PILOT_ACCOUNT_NAME = "Cuenta piloto",
   STAGE = "dev",
@@ -23,7 +23,7 @@ if (!DB_CLUSTER_ARN || !DB_SECRET_ARN || !PILOT_ACCOUNT_ID) {
 
 type LegacyItem = Record<string, unknown>;
 
-const prefix = `app-finances-${STAGE}`;
+const prefix = `app-nexo-${STAGE}`;
 const sourceTables = {
   clients: process.env.SOURCE_CLIENTS_TABLE ?? `${prefix}-clients`,
   bankAccounts: process.env.SOURCE_BANK_ACCOUNTS_TABLE ?? `${prefix}-bank-accounts`,

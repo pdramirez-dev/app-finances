@@ -1,4 +1,4 @@
-name: app-finances-local
+name: app-nexo-local
 
 services:
   postgres:
@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_USER: ${LOCAL_POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-app}
-      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-app_finances}
+      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-app_nexo}
     ports:
       - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${LOCAL_POSTGRES_USER:-app} -d ${LOCAL_POSTGRES_DB:-app_finances}",
+          "pg_isready -U ${LOCAL_POSTGRES_USER:-app} -d ${LOCAL_POSTGRES_DB:-app_nexo}",
         ]
       interval: 2s
       timeout: 3s
@@ -37,13 +37,13 @@ services:
       LOCAL_POSTGRES_PORT: ${LOCAL_POSTGRES_PORT:-5432}
       LOCAL_POSTGRES_USER: ${LOCAL_POSTGRES_USER:-app}
       LOCAL_POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-app}
-      LOCAL_POSTGRES_DB: ${LOCAL_POSTGRES_DB:-app_finances}
-      LOCAL_COGNITO_EMAIL: ${LOCAL_COGNITO_EMAIL:-admin@app-finances.local}
+      LOCAL_POSTGRES_DB: ${LOCAL_POSTGRES_DB:-app_nexo}
+      LOCAL_COGNITO_EMAIL: ${LOCAL_COGNITO_EMAIL:-admin@app-nexo.local}
       LOCAL_COGNITO_PASSWORD: ${LOCAL_COGNITO_PASSWORD:-LocalPass123!}
       LOCAL_ACCOUNT_ID: ${LOCAL_ACCOUNT_ID:-00000000-0000-4000-8000-000000000001}
     volumes:
       - ./.localstack:/var/lib/localstack
-      - ./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/10-app-finances.sh:ro
+      - ./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/10-app-nexo.sh:ro
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test:

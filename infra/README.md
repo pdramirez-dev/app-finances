@@ -1,17 +1,17 @@
 # Infraestructura CDK
 
-Infra de `app-finances` con separación frontend/backend por entorno.
+Infra de `app-nexo` con separación frontend/backend por entorno.
 
 ## Stacks por entorno
 
-- `AppFinances-Backend-<stage>`
+- `AppNexo-Backend-<stage>`
   - Cognito (User Pool + App Client + Hosted UI domain)
   - AppSync (GraphQL)
   - Aurora PostgreSQL Serverless v2 para accounts, clients, bank accounts e invoices
   - DynamoDB para membresías, auditoría append-only y metadatos PDF
   - S3 para PDFs
   - Lambda de generación PDF
-- `AppFinances-Frontend-<stage>`
+- `AppNexo-Frontend-<stage>`
   - Amplify app + branch
   - Variables de entorno para Next.js (AppSync + Cognito)
 

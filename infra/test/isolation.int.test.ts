@@ -7,7 +7,7 @@ import {
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
-const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_finances_test";
+const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_nexo_test";
 
 const dbAvailable = await (async () => {
   const probe = new Client({ connectionString: URL, connectionTimeoutMillis: 2000 });

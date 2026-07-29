@@ -273,7 +273,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RDSDataClient, ExecuteStatementCommand } from "@aws-sdk/client-rds-data";
 
-const { DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME = "app_finances" } = process.env;
+const { DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME = "app_nexo" } = process.env;
 if (!DB_CLUSTER_ARN || !DB_SECRET_ARN) throw new Error("DB_CLUSTER_ARN and DB_SECRET_ARN are required");
 
 const client = new RDSDataClient({});
@@ -361,7 +361,7 @@ Y reemplazar la creación de `QueryListClientsResolver` y `QueryGetClientResolve
 
 - [ ] **Step 3: Bundlear y sintetizar**
 
-Run: `cd infra && npm run build:resolvers && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npm run build:resolvers && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
 - [ ] **Step 4: Commit**
@@ -387,7 +387,7 @@ import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
 import { listClients, getClient, getInvoice } from "../graphql/resolvers/src/lib/sql-builders";
 
-const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_finances_test";
+const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_nexo_test";
 let db: Client;
 
 // Ejecuta un SqlRequest (:name) sustituyendo por placeholders posicionales de pg.
@@ -522,7 +522,7 @@ Run el test → PASS.
 
 - [ ] **Step 5: Bundlear, typecheck, synth**
 
-Run: `cd infra && npm run build:resolvers && npx tsc --noEmit && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npm run build:resolvers && npx tsc --noEmit && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
 - [ ] **Step 6: Commit**
@@ -675,7 +675,7 @@ Patrón de Task 4. Field resolvers `Invoice.sections` y `InvoiceSection.lineItem
 
 - [ ] **Step 6: Bundlear, typecheck, synth, test**
 
-Run: `cd infra && npm run build:resolvers && npx tsc --noEmit && npx vitest run && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npm run build:resolvers && npx tsc --noEmit && npx vitest run && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK` y todos los tests verdes.
 
 - [ ] **Step 7: Commit**
@@ -702,7 +702,7 @@ git commit -m "feat(resolvers): migrate invoices with atomic numbering, cascade 
 
 - [ ] **Step 2: Sintetizar para validar el schema**
 
-Run: `cd infra && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK` (AppSync valida que los resolvers referencian campos existentes).
 
 - [ ] **Step 3: Commit**
@@ -750,7 +750,7 @@ git commit -m "refactor(web): stop sending accountId; server assigns invoice num
 
 - [ ] **Step 2: Synth y assertions CDK**
 
-Run: `cd infra && npx vitest run test/backend-stack.test.ts && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npx vitest run test/backend-stack.test.ts && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
 - [ ] **Step 3: Commit**

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.local.yml"
-RUNTIME_ENV="$ROOT_DIR/.localstack/app-finances.env"
+RUNTIME_ENV="$ROOT_DIR/.localstack/app-nexo.env"
 
 if [[ ! -s "$RUNTIME_ENV" ]]; then
   echo "Falta $RUNTIME_ENV. Ejecuta primero: bash scripts/localstack-up.sh" >&2
@@ -20,16 +20,16 @@ aws_local() {
 }
 
 expected_tables=(
-  app-finances-local-audit-log
-  app-finances-local-invoice-pdf-metadata
-  app-finances-local-user-memberships
+  app-nexo-local-audit-log
+  app-nexo-local-invoice-pdf-metadata
+  app-nexo-local-user-memberships
 )
 
 for table in "${expected_tables[@]}"; do
   aws_local dynamodb describe-table --table-name "$table" >/dev/null
 done
 
-aws_local s3api head-bucket --bucket app-finances-local-invoice-pdfs >/dev/null
+aws_local s3api head-bucket --bucket app-nexo-local-invoice-pdfs >/dev/null
 
 if [[ "${LOCALSTACK_ENABLE_COGNITO:-false}" == "true" ]]; then
   auth_json="$(aws_local cognito-idp initiate-auth \
@@ -44,7 +44,7 @@ if [[ "${LOCALSTACK_ENABLE_COGNITO:-false}" == "true" ]]; then
 fi
 
 docker compose -f "$COMPOSE_FILE" exec -T postgres \
-  pg_isready -U "${LOCAL_POSTGRES_USER:-app}" -d "${LOCAL_POSTGRES_DB:-app_finances}" >/dev/null
+  pg_isready -U "${LOCAL_POSTGRES_USER:-app}" -d "${LOCAL_POSTGRES_DB:-app_nexo}" >/dev/null
 
 if [[ "${LOCALSTACK_ENABLE_COGNITO:-false}" == "true" ]]; then
   echo "OK: PostgreSQL, Cognito, las 3 tablas DynamoDB y el bucket S3 están disponibles."
