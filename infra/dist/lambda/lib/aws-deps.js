@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.toSqlParameters = toSqlParameters;
+exports.recordsToObjects = recordsToObjects;
 exports.sendInvoiceEmailDeps = sendInvoiceEmailDeps;
 exports.downloadInvoiceDeps = downloadInvoiceDeps;
 const client_rds_data_1 = require("@aws-sdk/client-rds-data");
@@ -8,11 +9,11 @@ const client_s3_1 = require("@aws-sdk/client-s3");
 const client_secrets_manager_1 = require("@aws-sdk/client-secrets-manager");
 const client_sesv2_1 = require("@aws-sdk/client-sesv2");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
-// Parameters compared against uuid columns need an explicit hint over the Data API.
-const UUID_PARAMS = new Set(["acc", "invoiceId", "reminderId"]);
+const sql_params_1 = require("../../graphql/resolvers/src/lib/sql-params");
 function toSqlParameters(params) {
     return Object.entries(params).map(([name, value]) => {
-        const typeHint = UUID_PARAMS.has(name) ? "UUID" : undefined;
+        // Same name -> hint map as the AppSync resolvers (uuid/date need it over the Data API).
+        const typeHint = (0, sql_params_1.sqlTypeHint)(name);
         if (value === null || value === undefined)
             return { name, value: { isNull: true }, typeHint };
         if (typeof value === "number") {
@@ -22,6 +23,28 @@ function toSqlParameters(params) {
             return { name, value: { booleanValue: value }, typeHint };
         return { name, value: { stringValue: String(value) }, typeHint };
     });
+}
+function fieldValue(field) {
+    if (field.isNull)
+        return null;
+    if (field.stringValue !== undefined)
+        return field.stringValue;
+    if (field.longValue !== undefined)
+        return field.longValue;
+    if (field.doubleValue !== undefined)
+        return field.doubleValue;
+    if (field.booleanValue !== undefined)
+        return field.booleanValue;
+    return null;
+}
+/**
+ * Rows as objects keyed by column label. Built from plain records rather than
+ * formatRecordsAs: "JSON", which local emulators (Floci) do not implement and
+ * which AWS also answers with records + metadata.
+ */
+function recordsToObjects(records, columns) {
+    const names = (columns ?? []).map((column, index) => column.label || column.name || `column${index}`);
+    return (records ?? []).map((record) => Object.fromEntries(record.map((field, index) => [names[index], fieldValue(field)])));
 }
 function requireEnv(name) {
     const value = process.env[name];
@@ -53,9 +76,9 @@ function sendInvoiceEmailDeps() {
                 database: process.env.DB_NAME ?? "app_nexo",
                 sql: request.statement,
                 parameters: toSqlParameters(request.params),
-                formatRecordsAs: "JSON",
+                includeResultMetadata: true,
             }));
-            return result.formattedRecords ? JSON.parse(result.formattedRecords) : [];
+            return recordsToObjects(result.records, result.columnMetadata);
         },
         async putPdf(key, body, filename) {
             await s3.send(new client_s3_1.PutObjectCommand({
