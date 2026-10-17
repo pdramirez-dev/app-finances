@@ -83,6 +83,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
     "0003_crm",
     "0004_crm_financial_invariants",
     "0005_invoice_series",
+    "0005b_invoice_version",
     "0006_payment_reminders",
   ]);
 
@@ -95,6 +96,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
     "0003_crm.sql",
     "0004_crm_financial_invariants.sql",
     "0005_invoice_series.sql",
+    "0005b_invoice_version.sql",
     "0006_payment_reminders.sql",
   ]);
 });

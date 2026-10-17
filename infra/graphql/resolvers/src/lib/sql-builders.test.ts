@@ -410,3 +410,12 @@ test("reminder claims and logs are scoped to the row's own account", () => {
   expect((done.params.error as string).length).toBe(500);
   expect(listInvoiceReminders("ACC_A", { invoiceId: "INV" }).statement).toMatch(/account_id = :acc/);
 });
+
+test("updateInvoiceFull requires the opened version, bumps it, and freezes the currency once paid", () => {
+  const r = updateInvoiceFull("ACC_A", { invoiceId: "INV1", input: { expectedVersion: 3, currency: "EUR", date: "2026-01-01",
+    weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(r.statement).toMatch(/AND version = :expectedVersion/);
+  expect(r.statement).toMatch(/version = inv\.version \+ 1/);
+  expect(r.statement).toMatch(/upper\(CAST\(:currency AS text\)\) = upper\(invoices\.currency\)\s+OR NOT EXISTS/);
+  expect(r.params).toMatchObject({ expectedVersion: 3, currency: "EUR" });
+});

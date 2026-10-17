@@ -6,6 +6,7 @@ import {
   putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, getReminderSettings, putReminderSettings, dueReminders, claimScheduledReminder, logManualReminder, completeReminder, listInvoiceReminders, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
+import { registerPayment } from "../graphql/resolvers/src/lib/crm-sql-builders";
 
 const URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_nexo_test";
 
@@ -206,6 +207,7 @@ const createEditableInvoice = async () => (await run(createInvoiceFull(ACC_A, { 
 dbTest("updateInvoiceFull replaces header, sections and line items and keeps number and status", async () => {
   const created = await createEditableInvoice();
   const rows = await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: {
+    expectedVersion: created.version,
     clientId: "aaaaaaaa-0000-0000-0000-000000000001",
     date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "New addr", project: "P2",
     grandTotal: 35,
@@ -228,7 +230,7 @@ dbTest("updateInvoiceFull replaces header, sections and line items and keeps num
 
 dbTest("updateInvoiceFull cannot edit another account's invoice", async () => {
   const rows = await run(updateInvoiceFull(ACC_A, { invoiceId: "cccccccc-0000-0000-0000-000000000001", input: {
-    date: "2026-03-02", weekNumber: 10, billToName: "Hijacked", billToAddress: "x", project: "x",
+    expectedVersion: 1, date: "2026-03-02", weekNumber: 10, billToName: "Hijacked", billToAddress: "x", project: "x",
     grandTotal: 0, sections: [],
   } } as any));
   expect(rows).toHaveLength(0);
@@ -239,7 +241,7 @@ dbTest("updateInvoiceFull cannot edit another account's invoice", async () => {
 dbTest("updateInvoiceFull leaves paid invoices and foreign-client edits untouched", async () => {
   const created = await createEditableInvoice();
   const edit = (clientId: string | null) => run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: {
-    clientId, date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "x", project: "x",
+    expectedVersion: created.version, clientId, date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "x", project: "x",
     grandTotal: 0, sections: [],
   } } as any));
 
@@ -261,7 +263,7 @@ dbTest("updateInvoiceFull cannot lower the total below registered non-voided pay
     [ACC_A, created.invoiceId, `REF-${created.invoiceId}`],
   );
   const edit = (grandTotal: number) => run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: {
-    date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "x", project: "x", grandTotal,
+    expectedVersion: created.version, date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "x", project: "x", grandTotal,
     sections: [{ title: "S", total: grandTotal, lineItems: [{ description: "d", quantity: 1, amount: grandTotal }] }],
   } } as any));
 
@@ -500,4 +502,101 @@ dbTest("invoiceDocument reports the balance due after non-voided payments", asyn
   );
   const [doc] = await run(invoiceDocument(ACC_A, { invoiceId }));
   expect(Number(doc.balanceDue)).toBe(70);
+});
+
+// --- Review findings: concurrent edits and payment currency -------------------
+
+function positional(req: { statement: string; params: Record<string, unknown> }) {
+  const names = Object.keys(req.params);
+  return {
+    text: req.statement.replace(/:([a-zA-Z_]+)/g, (_, n) => `$${names.indexOf(n) + 1}`),
+    values: names.map((n) => req.params[n]),
+  };
+}
+
+const editInput = (title: string, total: number, extra: Record<string, unknown> = {}) => ({
+  date: "2026-03-02", weekNumber: 10, billToName: title, billToAddress: "x", project: "x", grandTotal: total,
+  sections: [{ title, total, lineItems: [{ description: title, quantity: 1, amount: total }] }],
+  ...extra,
+});
+
+dbTest("two overlapping edits never leave a mix of both edits' sections", async () => {
+  const created = await createEditableInvoice();
+  const [{ version }] = (await db.query("SELECT version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  const other = new Client({ connectionString: URL });
+  await other.connect();
+  try {
+    await db.query("BEGIN");
+    const first = positional(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: editInput("First", 10, { expectedVersion: version }) }));
+    expect((await db.query(first.text, first.values)).rows).toHaveLength(1);
+
+    // The second edit was opened from the same version and blocks on the row lock.
+    const second = positional(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: editInput("Second", 20, { expectedVersion: version }) }));
+    const secondResult = other.query(second.text, second.values);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await db.query("COMMIT");
+    expect((await secondResult).rows).toHaveLength(0); // stale edit rejected
+  } finally {
+    await other.end();
+  }
+
+  const sections = (await db.query(
+    "SELECT title, total FROM invoice_sections WHERE invoice_id = $1 ORDER BY position", [created.invoiceId],
+  )).rows;
+  const [invoice] = (await db.query("SELECT grand_total, bill_to_name, version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  expect(sections.map((row) => row.title)).toEqual(["First"]);
+  expect(Number(invoice.grand_total)).toBe(10);
+  expect(invoice.version).toBe(version + 1);
+});
+
+dbTest("an edit opened from an older version is rejected", async () => {
+  const created = await createEditableInvoice();
+  const [{ version }] = (await db.query("SELECT version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  expect(await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: editInput("Now", 20, { expectedVersion: version }) }))).toHaveLength(1);
+  expect(await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: editInput("Stale", 30, { expectedVersion: version }) }))).toHaveLength(0);
+});
+
+dbTest("the currency cannot change once non-voided payments exist", async () => {
+  const created = await createEditableInvoice(); // USD, total 20
+  const [{ version }] = (await db.query("SELECT version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  const [payment] = await run(registerPayment(ACC_A, { input: {
+    invoiceId: created.invoiceId, amount: 5, method: "ACH", reference: `CUR-${created.invoiceId}`,
+  } }));
+  expect(payment).toBeTruthy();
+  const [{ version: afterPayment }] = (await db.query("SELECT version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  expect(afterPayment).toBe(version + 1); // a payment invalidates edits opened before it
+
+  const toEur = await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId,
+    input: editInput("Eur", 20, { currency: "EUR", expectedVersion: afterPayment }) }));
+  expect(toEur).toHaveLength(0);
+  const sameCurrency = await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId,
+    input: editInput("Usd", 20, { currency: "usd", expectedVersion: afterPayment }) }));
+  expect(sameCurrency).toHaveLength(1);
+
+  await db.query("UPDATE payments SET status = 'VOIDED', voided_at = now(), voided_by = 'test', void_reason = 'test' WHERE invoice_id = $1", [created.invoiceId]);
+  const [{ version: afterVoid }] = (await db.query("SELECT version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  expect(await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId,
+    input: editInput("Eur", 20, { currency: "EUR", expectedVersion: afterVoid }) }))).toHaveLength(1);
+});
+
+dbTest("a payment registered while an edit changes the currency uses the invoice's final currency", async () => {
+  const created = await createEditableInvoice();
+  const [{ version }] = (await db.query("SELECT version FROM invoices WHERE id = $1", [created.invoiceId])).rows;
+  const other = new Client({ connectionString: URL });
+  await other.connect();
+  try {
+    await db.query("BEGIN");
+    const edit = positional(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId,
+      input: editInput("Eur", 20, { currency: "EUR", expectedVersion: version }) }));
+    expect((await db.query(edit.text, edit.values)).rows).toHaveLength(1);
+    const pay = positional(registerPayment(ACC_A, { input: {
+      invoiceId: created.invoiceId, amount: 5, currency: "USD", method: "ACH", reference: `RACE-${created.invoiceId}`,
+    } }));
+    const payResult = other.query(pay.text, pay.values);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await db.query("COMMIT");
+    expect((await payResult).rows).toHaveLength(0); // the USD payment no longer matches a EUR invoice
+  } finally {
+    await other.end();
+  }
 });

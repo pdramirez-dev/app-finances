@@ -25,6 +25,8 @@ export type InvoiceRecord = {
   invoiceNumber: number;
   seriesId: string | null;
   seriesCode: string;
+  /** Bumped by every edit and payment; edits must send the version they started from. */
+  version: number;
   clientId: string | null;
   date: Date;
   dueDate: Date | null;

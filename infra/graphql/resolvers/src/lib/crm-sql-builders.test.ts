@@ -216,3 +216,10 @@ describe("summary and workspace search", () => {
     expect(request.statement).toMatch(/lpad\(CAST\(invoice_number AS text\), GREATEST\(4, length\(CAST\(invoice_number AS text\)\)\), '0'\) END\) ILIKE :term/);
   });
 });
+
+test("registerPayment locks the invoice and bumps its version so stale edits are rejected", () => {
+  const request = registerPayment("ACC", { input: { invoiceId: "INV", amount: 5, method: "ACH", reference: "R" } });
+  expect(request.statement).toMatch(/AND upper\(i\.currency\) = upper\(COALESCE\(:currency, i\.currency\)\)\s+FOR UPDATE/);
+  expect(request.statement).toMatch(/UPDATE invoices SET version = version \+ 1 WHERE id IN \(SELECT id FROM target_invoice\)/);
+});
+
