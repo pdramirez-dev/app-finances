@@ -2,27 +2,46 @@ export type SqlRequest = { statement: string; params: Record<string, unknown> };
 
 export const DEFAULT_PAGE_SIZE = 25;
 
-export function decodePageToken(token: unknown): number {
+// These helpers are bundled into APPSYNC_JS resolvers: no regex, throw or
+// Number.isInteger. Invalid input comes back as null for the resolver to turn
+// into util.error().
+const DIGITS = "0123456789";
+
+/** Offset encoded in a page token: 0 when absent, null when tampered with. */
+export function decodePageToken(token: unknown): number | null {
   if (token === null || token === undefined || token === "") return 0;
-  const offset = Number(token);
-  if (!Number.isInteger(offset) || offset < 0) throw new Error("Invalid pagination token");
-  return offset;
+  const text = String(token);
+  if (!text.split("").every((char) => DIGITS.indexOf(char) !== -1)) return null;
+  return Number(text);
 }
 
 export function nextPageToken(offset: number, limit: number, rowCount: number): string | null {
   return rowCount < limit ? null : String(offset + limit);
 }
 
-export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string | null {
+const MASK_CHARS = "*xX•";
+const MASK_SEPARATORS = " .-";
+
+/** True when a bank identifier is masked and shows at most `maxVisible` characters. */
+export function isMaskedBankValue(value: unknown, maxVisible = 4): boolean {
+  if (value === null || value === undefined || value === "") return true;
+  const chars = String(value).trim().split("");
+  const hasMask = chars.some((char) => MASK_CHARS.indexOf(char) !== -1);
+  const visible = chars.filter((char) => MASK_CHARS.indexOf(char) === -1 && MASK_SEPARATORS.indexOf(char) === -1);
+  return hasMask && visible.length <= maxVisible;
+}
+
+export function invalidMaskedBankFields(input: Record<string, unknown>): string[] {
+  const invalid: string[] = [];
+  if (!isMaskedBankValue(input.accountNumberMasked)) invalid.push("accountNumberMasked");
+  if (!isMaskedBankValue(input.routingNumberMasked)) invalid.push("routingNumberMasked");
+  if (!isMaskedBankValue(input.ibanMasked, 6)) invalid.push("ibanMasked");
+  return invalid;
+}
+
+export function normalizeMaskedBankValue(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
-  const normalized = String(value).trim();
-  const visible = normalized.replace(/[*xX•\s.-]/g, "");
-
-  if (!/[*xX•]/.test(normalized) || visible.length > maxVisible) {
-    throw new Error("Bank identifiers must be masked and expose only their final characters");
-  }
-
-  return normalized;
+  return String(value).trim();
 }
 
 const INVOICE_COLS =
@@ -161,7 +180,7 @@ export function putBankAccount(acc: string, args: { input: any }): SqlRequest {
     params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
               acct: normalizeMaskedBankValue(i.accountNumberMasked),
               rout: normalizeMaskedBankValue(i.routingNumberMasked),
-              iban: normalizeMaskedBankValue(i.ibanMasked, 6),
+              iban: normalizeMaskedBankValue(i.ibanMasked),
               swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
   };
 }
