@@ -14,6 +14,106 @@ enum AccountType {
   COMPANY
 }
 
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ClientStatus {
+  ACTIVE
+  PROSPECT
+  INACTIVE
+}
+
+enum ContactKind {
+  CLIENT
+  LEAD
+  PARTNER
+}
+
+enum OpportunityStage {
+  LEAD
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum OpportunitySource {
+  REFERRAL
+  WEB
+  EVENT
+  OUTBOUND
+  OTHER
+}
+
+enum CrmPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskKind {
+  CALL
+  EMAIL
+  MEETING
+  FOLLOW_UP
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum CalendarEventType {
+  MEETING
+  CALL
+  FOLLOW_UP
+  DELIVERY
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CARD
+  ACH
+  CHECK
+  CASH
+  OTHER
+}
+
+enum PaymentStatus {
+  UNRECONCILED
+  RECONCILED
+  VOIDED
+}
+
+enum WorkspaceEntityType {
+  CLIENT
+  CONTACT
+  OPPORTUNITY
+  PROJECT
+  TASK
+  CALENDAR_EVENT
+  INVOICE
+  PAYMENT
+}
+
 type Query {
   getInvoice(invoiceId: ID!): Invoice
   getInvoiceByNumber(invoiceNumber: Int!): Invoice
@@ -22,10 +122,28 @@ type Query {
   listClients(limit: Int, nextToken: String): ClientConnection!
   getClient(clientId: ID!): Client
   getBankAccount(bankAccountId: ID!): BankAccount
+  getMyMembership: UserMembership!
+
+  getContact(contactId: ID!): Contact
+  listContacts(kind: ContactKind, clientId: ID, search: String, limit: Int, nextToken: String): ContactConnection!
+  getOpportunity(opportunityId: ID!): Opportunity
+  listOpportunities(stage: OpportunityStage, ownerUserId: ID, source: OpportunitySource, search: String, limit: Int, nextToken: String): OpportunityConnection!
+  getProject(projectId: ID!): Project
+  listProjects(status: ProjectStatus, clientId: ID, search: String, limit: Int, nextToken: String): ProjectConnection!
+  getTask(taskId: ID!): CrmTask
+  listTasks(status: TaskStatus, ownerUserId: ID, priority: CrmPriority, dueFrom: AWSDateTime, dueTo: AWSDateTime, search: String, limit: Int, nextToken: String): CrmTaskConnection!
+  getCalendarEvent(eventId: ID!): CalendarEvent
+  listCalendarEvents(from: AWSDateTime!, to: AWSDateTime!, ownerUserId: ID, eventType: CalendarEventType, limit: Int, nextToken: String): CalendarEventConnection!
+  getPayment(paymentId: ID!): Payment
+  listPayments(status: PaymentStatus, invoiceId: ID, method: PaymentMethod, limit: Int, nextToken: String): PaymentConnection!
+  listBankMovements(bankAccountId: ID, reconciled: Boolean, limit: Int, nextToken: String): BankMovementConnection!
+  getCrmSummary: CrmSummary!
+  searchWorkspace(query: String!, limit: Int, nextToken: String): WorkspaceSearchConnection!
 }
 
 type Mutation {
   putInvoice(input: PutInvoiceInput!): Invoice!
+  createInvoiceFull(input: CreateInvoiceFullInput!): Invoice!
   putInvoiceSection(input: PutInvoiceSectionInput!): InvoiceSection!
   putInvoiceLineItem(input: PutInvoiceLineItemInput!): InvoiceLineItem!
   deleteInvoiceSection(invoiceId: ID!, sectionId: ID!): Boolean!
@@ -37,6 +155,26 @@ type Mutation {
   putClient(input: PutClientInput!): Client!
   deleteClient(clientId: ID!): Boolean!
   putBankAccount(input: PutBankAccountInput!): BankAccount!
+
+  putContact(input: PutContactInput!): Contact!
+  deleteContact(contactId: ID!): Boolean!
+  setContactFavorite(contactId: ID!, favorite: Boolean!): Contact!
+  putOpportunity(input: PutOpportunityInput!): Opportunity!
+  deleteOpportunity(opportunityId: ID!): Boolean!
+  updateOpportunityStage(opportunityId: ID!, stage: OpportunityStage!): Opportunity!
+  putProject(input: PutProjectInput!): Project!
+  deleteProject(projectId: ID!): Boolean!
+  updateProjectStatus(projectId: ID!, status: ProjectStatus!): Project!
+  putTask(input: PutTaskInput!): CrmTask!
+  deleteTask(taskId: ID!): Boolean!
+  setTaskCompleted(taskId: ID!, completed: Boolean!): CrmTask!
+  putCalendarEvent(input: PutCalendarEventInput!): CalendarEvent!
+  deleteCalendarEvent(eventId: ID!): Boolean!
+  registerPayment(input: RegisterPaymentInput!): Payment!
+  voidPayment(paymentId: ID!, reason: String!): Payment!
+  putBankMovement(input: PutBankMovementInput!): BankMovement!
+  reconcilePayment(paymentId: ID!, movementId: ID!, allocatedAmount: Float): Payment!
+  undoReconciliation(paymentId: ID!, movementId: ID!, reason: String!): Payment!
 }
 
 type InvoiceConnection {
@@ -49,10 +187,53 @@ type ClientConnection {
   nextToken: String
 }
 
+type ContactConnection {
+  items: [Contact!]!
+  nextToken: String
+}
+
+type OpportunityConnection {
+  items: [Opportunity!]!
+  nextToken: String
+}
+
+type ProjectConnection {
+  items: [Project!]!
+  nextToken: String
+}
+
+type CrmTaskConnection {
+  items: [CrmTask!]!
+  nextToken: String
+}
+
+type CalendarEventConnection {
+  items: [CalendarEvent!]!
+  nextToken: String
+}
+
+type PaymentConnection {
+  items: [Payment!]!
+  nextToken: String
+}
+
+type BankMovementConnection {
+  items: [BankMovement!]!
+  nextToken: String
+}
+
+type WorkspaceSearchConnection {
+  items: [WorkspaceSearchResult!]!
+  nextToken: String
+}
+
 type Invoice {
   invoiceId: ID!
+  accountId: ID!
+  clientId: ID
   invoiceNumber: Int!
   date: AWSDate!
+  dueDate: AWSDate
   weekNumber: Int!
   billToName: String!
   billToAddress: String!
@@ -111,6 +292,12 @@ type Client {
   phone: AWSPhone
   address: String
   taxId: String
+  industry: String
+  website: String
+  status: ClientStatus!
+  ownerUserId: ID
+  tags: [String!]!
+  notes: String
   createdAt: AWSDateTime!
   updatedAt: AWSDateTime!
 }
@@ -130,10 +317,182 @@ type BankAccount {
   updatedAt: AWSDateTime!
 }
 
+type UserMembership {
+  accountId: ID!
+  userId: ID!
+  role: MembershipRole!
+  status: MembershipStatus!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type Contact {
+  accountId: ID!
+  contactId: ID!
+  clientId: ID
+  name: String!
+  role: String
+  email: AWSEmail
+  phone: AWSPhone
+  location: String
+  kind: ContactKind!
+  lastContactAt: AWSDateTime
+  estimatedValue: Float
+  currency: String!
+  isFavorite: Boolean!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type Opportunity {
+  accountId: ID!
+  opportunityId: ID!
+  clientId: ID
+  contactId: ID
+  title: String!
+  value: Float!
+  currency: String!
+  stage: OpportunityStage!
+  probability: Int!
+  ownerUserId: ID
+  source: OpportunitySource!
+  nextAction: String
+  nextActionAt: AWSDateTime
+  tags: [String!]!
+  closedAt: AWSDateTime
+  lostReason: String
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type Project {
+  accountId: ID!
+  projectId: ID!
+  clientId: ID!
+  opportunityId: ID
+  name: String!
+  description: String
+  status: ProjectStatus!
+  priority: CrmPriority!
+  progress: Int!
+  dueDate: AWSDate
+  budget: Float!
+  spent: Float!
+  currency: String!
+  ownerUserId: ID
+  teamUserIds: [ID!]!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type CrmTask {
+  accountId: ID!
+  taskId: ID!
+  title: String!
+  description: String
+  dueAt: AWSDateTime
+  priority: CrmPriority!
+  kind: TaskKind!
+  status: TaskStatus!
+  ownerUserId: ID
+  completedAt: AWSDateTime
+  clientId: ID
+  contactId: ID
+  opportunityId: ID
+  projectId: ID
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type CalendarEvent {
+  accountId: ID!
+  eventId: ID!
+  title: String!
+  description: String
+  startsAt: AWSDateTime!
+  endsAt: AWSDateTime!
+  timezone: String!
+  allDay: Boolean!
+  eventType: CalendarEventType!
+  ownerUserId: ID
+  location: String
+  clientId: ID
+  contactId: ID
+  opportunityId: ID
+  projectId: ID
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type Payment {
+  accountId: ID!
+  paymentId: ID!
+  invoiceId: ID!
+  bankAccountId: ID
+  amount: Float!
+  currency: String!
+  method: PaymentMethod!
+  status: PaymentStatus!
+  receivedAt: AWSDateTime!
+  reference: String!
+  notes: String
+  voidedAt: AWSDateTime
+  voidedBy: ID
+  voidReason: String
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type BankMovement {
+  accountId: ID!
+  movementId: ID!
+  bankAccountId: ID
+  externalId: String
+  description: String!
+  reference: String
+  amount: Float!
+  currency: String!
+  bookedOn: AWSDate!
+  valueOn: AWSDate
+  reconciled: Boolean!
+  allocatedAmount: Float!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type CrmSummary {
+  totalClients: Int!
+  activeContacts: Int!
+  openOpportunities: Int!
+  openPipelineValue: Float!
+  weightedPipelineValue: Float!
+  activeProjects: Int!
+  pendingTasks: Int!
+  overdueTasks: Int!
+  unreconciledPayments: Int!
+  unreconciledAmount: Float!
+  invoicedAmount: Float!
+  collectedAmount: Float!
+  outstandingAmount: Float!
+  overdueAmount: Float!
+  conversionRate: Float!
+  grossMargin: Float!
+  currency: String!
+}
+
+type WorkspaceSearchResult {
+  entityType: WorkspaceEntityType!
+  entityId: ID!
+  title: String!
+  subtitle: String
+}
+
 input PutInvoiceInput {
   invoiceId: ID
+  clientId: ID
   invoiceNumber: Int
   date: AWSDate!
+  dueDate: AWSDate
   weekNumber: Int!
   billToName: String!
   billToAddress: String!
@@ -143,6 +502,33 @@ input PutInvoiceInput {
   grandTotal: Float!
   status: InvoiceStatus
   createdAt: AWSDateTime
+}
+
+input CreateInvoiceFullLineItemInput {
+  description: String!
+  quantity: Float!
+  amount: Float!
+}
+
+input CreateInvoiceFullSectionInput {
+  title: String!
+  total: Float!
+  lineItems: [CreateInvoiceFullLineItemInput!]!
+}
+
+input CreateInvoiceFullInput {
+  clientId: ID
+  date: AWSDate!
+  dueDate: AWSDate
+  weekNumber: Int!
+  billToName: String!
+  billToAddress: String!
+  project: String!
+  currency: String
+  notes: String
+  grandTotal: Float!
+  status: InvoiceStatus
+  sections: [CreateInvoiceFullSectionInput!]!
 }
 
 input PutInvoiceSectionInput {
@@ -179,6 +565,12 @@ input PutClientInput {
   phone: AWSPhone
   address: String
   taxId: String
+  industry: String
+  website: String
+  status: ClientStatus
+  ownerUserId: ID
+  tags: [String!]
+  notes: String
 }
 
 input PutBankAccountInput {
@@ -191,4 +583,110 @@ input PutBankAccountInput {
   swiftCode: String
   currency: String!
   country: String
+}
+
+input PutContactInput {
+  contactId: ID
+  clientId: ID
+  name: String!
+  role: String
+  email: AWSEmail
+  phone: AWSPhone
+  location: String
+  kind: ContactKind
+  lastContactAt: AWSDateTime
+  estimatedValue: Float
+  currency: String
+}
+
+input PutOpportunityInput {
+  opportunityId: ID
+  clientId: ID
+  contactId: ID
+  title: String!
+  value: Float!
+  currency: String
+  stage: OpportunityStage
+  probability: Int
+  ownerUserId: ID
+  source: OpportunitySource
+  nextAction: String
+  nextActionAt: AWSDateTime
+  tags: [String!]
+  closedAt: AWSDateTime
+  lostReason: String
+}
+
+input PutProjectInput {
+  projectId: ID
+  clientId: ID!
+  opportunityId: ID
+  name: String!
+  description: String
+  status: ProjectStatus
+  priority: CrmPriority
+  progress: Int
+  dueDate: AWSDate
+  budget: Float
+  spent: Float
+  currency: String
+  ownerUserId: ID
+  teamUserIds: [ID!]
+}
+
+input PutTaskInput {
+  taskId: ID
+  title: String!
+  description: String
+  dueAt: AWSDateTime
+  priority: CrmPriority
+  kind: TaskKind
+  status: TaskStatus
+  ownerUserId: ID
+  completedAt: AWSDateTime
+  clientId: ID
+  contactId: ID
+  opportunityId: ID
+  projectId: ID
+}
+
+input PutCalendarEventInput {
+  eventId: ID
+  title: String!
+  description: String
+  startsAt: AWSDateTime!
+  endsAt: AWSDateTime!
+  timezone: String
+  allDay: Boolean
+  eventType: CalendarEventType
+  ownerUserId: ID
+  location: String
+  clientId: ID
+  contactId: ID
+  opportunityId: ID
+  projectId: ID
+}
+
+input RegisterPaymentInput {
+  invoiceId: ID!
+  bankAccountId: ID
+  amount: Float!
+  currency: String
+  method: PaymentMethod!
+  receivedAt: AWSDateTime
+  reference: String!
+  notes: String
+}
+
+input PutBankMovementInput {
+  movementId: ID
+  bankAccountId: ID
+  externalId: String
+  description: String!
+  reference: String
+  amount: Float!
+  currency: String
+  bookedOn: AWSDate!
+  valueOn: AWSDate
+  rawPayload: AWSJSON
 }

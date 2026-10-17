@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { getAuthRequestMessage, postAuthJson } from "@/lib/auth-api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,51 +20,49 @@ export function ForgotPasswordForm() {
     setFormError(null);
 
     startTransition(async () => {
-      const response = await fetch("/api/cognito/password-reset/request", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
+      try {
+        const { ok, payload } = await postAuthJson<
+          | { ok: true; deliveryDestination?: string; deliveryMedium?: string }
+          | { error: string }
+        >("/api/cognito/password-reset/request", { email });
 
-      const payload = (await response.json()) as
-        | { ok: true; deliveryDestination?: string; deliveryMedium?: string }
-        | { error: string };
+        if (!ok || !("ok" in payload)) {
+          setFormError("error" in payload ? payload.error : "No fue posible enviar el código.");
+          return;
+        }
 
-      if (!response.ok || !("ok" in payload)) {
-        setFormError("error" in payload ? payload.error : "No fue posible enviar el codigo.");
-        return;
+        const params = new URLSearchParams({ email });
+
+        if (payload.deliveryDestination) {
+          params.set("destination", payload.deliveryDestination);
+        }
+
+        if (payload.deliveryMedium) {
+          params.set("medium", payload.deliveryMedium);
+        }
+
+        router.push(`/login/reset-password?${params.toString()}`);
+      } catch (error) {
+        setFormError(getAuthRequestMessage(error, "No fue posible enviar el código. Inténtalo de nuevo."));
       }
-
-      const params = new URLSearchParams({
-        email,
-      });
-
-      if (payload.deliveryDestination) {
-        params.set("destination", payload.deliveryDestination);
-      }
-
-      if (payload.deliveryMedium) {
-        params.set("medium", payload.deliveryMedium);
-      }
-
-      router.push(`/login/reset-password?${params.toString()}`);
     });
   }
 
   return (
-    <section className="flex h-full flex-col justify-between gap-8 rounded-3xl border border-white/35 bg-white p-8 shadow-2xl shadow-slate-950/25">
+    <section
+      className="flex h-full flex-col justify-between gap-8 rounded-3xl border border-white/35 bg-white p-6 shadow-2xl shadow-slate-950/25 sm:p-8"
+      aria-labelledby="forgot-password-title"
+    >
       <div className="space-y-4">
         <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-          Password Reset
+          Recuperación de acceso
         </p>
-        <h2 className="brand-heading text-2xl text-slate-950">Solicita un codigo</h2>
+        <h2 id="forgot-password-title" className="brand-heading text-2xl text-slate-950">Solicita un código</h2>
         <p className="text-sm leading-relaxed text-slate-600">
-          Te enviaremos un codigo de verificacion a traves del canal configurado en Cognito.
+          Te enviaremos un código de verificación al canal asociado con tu cuenta.
         </p>
         {formError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</p>
+          <p id="forgot-password-error" role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{formError}</p>
         ) : null}
       </div>
 
@@ -75,7 +74,15 @@ export function ForgotPasswordForm() {
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setFormError(null);
+            }}
+            className="h-11"
+            aria-invalid={Boolean(formError)}
+            aria-describedby={formError ? "forgot-password-error" : undefined}
+            disabled={isPending}
+            autoFocus
             required
           />
         </div>
@@ -83,11 +90,12 @@ export function ForgotPasswordForm() {
           className="h-11 w-full bg-gradient-to-r from-[#0a1226] via-[#13264d] to-[#1e3f6f] text-sm font-semibold text-white hover:from-[#121d38] hover:to-[#285187]"
           type="submit"
           disabled={isPending}
+          aria-busy={isPending}
         >
-          {isPending ? "Enviando..." : "Enviar codigo"}
+          {isPending ? "Enviando..." : "Enviar código"}
         </Button>
         <Link href="/login" className="block text-center text-xs text-slate-500 underline underline-offset-4">
-          Volver al login
+          Volver al inicio de sesión
         </Link>
       </form>
     </section>

@@ -5,16 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import {
-  deleteInvoice,
-  deleteInvoiceLineItem,
-  deleteInvoiceSection,
-  getInvoiceById,
-  putInvoice,
-  putInvoiceLineItem,
-  putInvoiceSection,
-  updateInvoiceStatus,
-} from "@/lib/appsync/invoices";
+import { createInvoiceFull, deleteInvoice, updateInvoiceStatus } from "@/lib/appsync/invoices";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { calculateGrandTotal, calculateSectionTotal } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
@@ -56,7 +47,9 @@ export async function createInvoiceAction(
   }
 
   const payloadResult = createInvoiceInputSchema.safeParse({
+    clientId: formData.get("clientId"),
     date: formData.get("date"),
+    dueDate: formData.get("dueDate"),
     weekNumber: formData.get("weekNumber"),
     billToName: formData.get("billToName"),
     billToAddress: formData.get("billToAddress"),
@@ -71,8 +64,10 @@ export async function createInvoiceAction(
 
   const payload = payloadResult.data;
   const grandTotal = calculateGrandTotal(payload.sections);
-  const createdInvoice = await putInvoice({
+  const createdInvoice = await createInvoiceFull({
+    clientId: payload.clientId,
     date: format(payload.date, "yyyy-MM-dd"),
+    dueDate: format(payload.dueDate, "yyyy-MM-dd"),
     weekNumber: payload.weekNumber,
     billToName: payload.billToName,
     billToAddress: payload.billToAddress,
@@ -80,26 +75,16 @@ export async function createInvoiceAction(
     notes: payload.notes,
     grandTotal,
     status: "DRAFT",
-  });
-
-  for (const [sectionIndex, section] of payload.sections.entries()) {
-    const createdSection = await putInvoiceSection({
-      invoiceId: createdInvoice.invoiceId,
+    sections: payload.sections.map((section) => ({
       title: section.title,
-      position: sectionIndex,
       total: calculateSectionTotal(section),
-    });
-
-    for (const [itemIndex, item] of section.items.entries()) {
-      await putInvoiceLineItem({
-        sectionId: createdSection.sectionId,
+      lineItems: section.items.map((item) => ({
         description: item.description,
         quantity: item.quantity,
         amount: item.amount,
-        position: itemIndex,
-      });
-    }
-  }
+      })),
+    })),
+  });
 
   revalidatePath("/invoices");
   redirect(`/invoices/${createdInvoice.invoiceId}`);
@@ -139,17 +124,7 @@ export async function deleteInvoiceAction(formData: FormData) {
     return;
   }
 
-  const invoice = await getInvoiceById(invoiceId);
-
-  if (invoice) {
-    for (const section of invoice.sections) {
-      await Promise.all(
-        section.lineItems.map((lineItem) => deleteInvoiceLineItem(section.sectionId, lineItem.lineItemId)),
-      );
-      await deleteInvoiceSection(invoiceId, section.sectionId);
-    }
-  }
-
+  // Sections and line items are removed by the database via ON DELETE CASCADE.
   await deleteInvoice(invoiceId);
 
   revalidatePath("/invoices");

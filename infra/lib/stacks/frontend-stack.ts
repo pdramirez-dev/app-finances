@@ -5,7 +5,7 @@ import { Construct } from "constructs";
 import type { StageName } from "../stage-config";
 import type { BackendExports } from "./backend-stack";
 
-export type AppFinancesFrontendStackProps = cdk.StackProps & {
+export type AppNexoFrontendStackProps = cdk.StackProps & {
   stage: StageName;
   amplifyBranchName: string;
   appUrl: string;
@@ -13,14 +13,14 @@ export type AppFinancesFrontendStackProps = cdk.StackProps & {
   authSecret?: string;
 };
 
-export class AppFinancesFrontendStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: AppFinancesFrontendStackProps) {
+export class AppNexoFrontendStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: AppNexoFrontendStackProps) {
     super(scope, id, props);
 
     const isProd = props.stage === "prod";
 
     const amplifyApp = new amplify.CfnApp(this, "AmplifyApp", {
-      name: `app-finances-${props.stage}`,
+      name: `app-nexo-${props.stage}`,
       platform: "WEB_COMPUTE",
       description: `Amplify frontend app for stage ${props.stage}`,
       enableBranchAutoDeletion: !isProd,

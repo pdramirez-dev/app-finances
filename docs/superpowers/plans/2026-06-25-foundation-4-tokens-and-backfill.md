@@ -370,7 +370,7 @@ additionalAuthorizationModes: [{ authorizationType: appsync.AuthorizationType.IA
 
 - [ ] **Step 4: Correr y verificar que pasa**
 
-Run: `cd infra && npx vitest run test/backend-stack.test.ts && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npx vitest run test/backend-stack.test.ts && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: PASS y `OK`.
 
 - [ ] **Step 5: Commit**
@@ -400,7 +400,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { RDSDataClient, ExecuteStatementCommand } from "@aws-sdk/client-rds-data";
 
-const { DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME = "app_finances",
+const { DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME = "app_nexo",
   PILOT_ACCOUNT_ID, STAGE = "dev" } = process.env;
 if (!DB_CLUSTER_ARN || !DB_SECRET_ARN || !PILOT_ACCOUNT_ID) {
   throw new Error("DB_CLUSTER_ARN, DB_SECRET_ARN and PILOT_ACCOUNT_ID are required");
@@ -433,7 +433,7 @@ const p = (name: string, value: any) =>
       : { name, value: { stringValue: String(value) } };
 
 async function main() {
-  const prefix = `app-finances-${STAGE}`;
+  const prefix = `app-nexo-${STAGE}`;
   const invoices = await scanAll(`${prefix}-invoices`);
   const sections = await scanAll(`${prefix}-invoice-sections`);
   const lineItems = await scanAll(`${prefix}-invoice-line-items`);

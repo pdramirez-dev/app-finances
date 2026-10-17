@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
@@ -12,7 +13,7 @@ import { Construct } from "constructs";
 
 import type { StageName } from "../stage-config";
 
-export type AppFinancesBackendStackProps = cdk.StackProps & {
+export type AppNexoBackendStackProps = cdk.StackProps & {
   stage: StageName;
   callbackUrls: string[];
   logoutUrls: string[];
@@ -89,17 +90,17 @@ function resolverFromFile(fileName: string) {
   return appsync.Code.fromAsset(path.join(process.cwd(), "graphql", "resolvers", fileName));
 }
 
-export class AppFinancesBackendStack extends cdk.Stack {
+export class AppNexoBackendStack extends cdk.Stack {
   public readonly exports: BackendExports;
 
-  constructor(scope: Construct, id: string, props: AppFinancesBackendStackProps) {
+  constructor(scope: Construct, id: string, props: AppNexoBackendStackProps) {
     super(scope, id, props);
 
     const isProd = props.stage === "prod";
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
     const invoicePdfMetadataTable = new dynamodb.Table(this, "InvoicePdfMetadataTable", {
-      tableName: `app-finances-${props.stage}-invoice-pdf-metadata`,
+      tableName: `app-nexo-${props.stage}-invoice-pdf-metadata`,
       partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "version", type: dynamodb.AttributeType.NUMBER },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -116,7 +117,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     });
 
     const userMembershipsTable = new dynamodb.Table(this, "UserMembershipsTable", {
-      tableName: `app-finances-${props.stage}-user-memberships`,
+      tableName: `app-nexo-${props.stage}-user-memberships`,
       partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -129,6 +130,24 @@ export class AppFinancesBackendStack extends cdk.Stack {
       indexName: "byUserId",
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    const auditLogTable = new dynamodb.Table(this, "AuditLogTable", {
+      tableName: `app-nexo-${props.stage}-audit-log`,
+      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "ttl",
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      deletionProtection: isProd,
+      removalPolicy,
+    });
+
+    auditLogTable.addGlobalSecondaryIndex({
+      indexName: "byEntity",
+      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "entityKey", type: dynamodb.AttributeType.STRING },
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
@@ -158,9 +177,10 @@ export class AppFinancesBackendStack extends cdk.Stack {
       serverlessV2MinCapacity: 0,
       serverlessV2MaxCapacity: 2,
       enableDataApi: true,
-      defaultDatabaseName: "app_finances",
+      defaultDatabaseName: "app_nexo",
       writer: rds.ClusterInstance.serverlessV2("Writer"),
       backup: { retention: cdk.Duration.days(7) },
+      storageEncrypted: true,
       removalPolicy,
     });
 
@@ -168,7 +188,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     new cdk.CfnOutput(this, "DomainDbSecretArn", { value: dbCluster.secret!.secretArn });
 
     const userPool = new cognito.UserPool(this, "UserPool", {
-      userPoolName: `app-finances-${props.stage}-users`,
+      userPoolName: `app-nexo-${props.stage}-users`,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       standardAttributes: {
@@ -191,7 +211,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     });
 
     const userPoolClient = userPool.addClient("WebClient", {
-      userPoolClientName: `app-finances-${props.stage}-web-client`,
+      userPoolClientName: `app-nexo-${props.stage}-web-client`,
       authFlows: {
         userSrp: true,
         userPassword: true,
@@ -213,7 +233,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
       refreshTokenValidity: cdk.Duration.days(30),
     });
 
-    const domainPrefix = props.cognitoDomainPrefix ?? `app-finances-${props.stage}`;
+    const domainPrefix = props.cognitoDomainPrefix ?? `app-nexo-${props.stage}`;
     const userPoolDomain = userPool.addDomain("CognitoDomain", {
       cognitoDomain: { domainPrefix },
       managedLoginVersion: cognito.ManagedLoginVersion.CLASSIC_HOSTED_UI,
@@ -247,7 +267,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     invoicePdfsBucket.grantReadWrite(generateInvoicePdfFn);
 
     const graphqlApi = new appsync.GraphqlApi(this, "AppSyncApi", {
-      name: `app-finances-${props.stage}-graphql`,
+      name: `app-nexo-${props.stage}-graphql`,
       definition: appsync.Definition.fromFile(path.join(process.cwd(), "graphql", "schema.graphql")),
       xrayEnabled: true,
       authorizationConfig: {
@@ -255,158 +275,260 @@ export class AppFinancesBackendStack extends cdk.Stack {
           authorizationType: appsync.AuthorizationType.USER_POOL,
           userPoolConfig: { userPool },
         },
-        additionalAuthorizationModes: [{ authorizationType: appsync.AuthorizationType.IAM }],
       },
     });
 
     const pdfLambdaDs = graphqlApi.addLambdaDataSource("PdfLambdaDs", generateInvoicePdfFn);
     const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!);
+    const membershipsDs = graphqlApi.addDynamoDbDataSource("UserMembershipsDs", userMembershipsTable);
 
-    rdsDs.createResolver("QueryGetInvoiceResolver", {
+    const membershipGuardFn = new appsync.AppsyncFunction(this, "RequireMembershipFn", {
+      api: graphqlApi,
+      dataSource: membershipsDs,
+      name: "RequireMembershipFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/fn-require-membership.js"),
+    });
+
+    membershipsDs.createResolver("QueryGetMyMembershipResolver", {
       typeName: "Query",
-      fieldName: "getInvoice",
+      fieldName: "getMyMembership",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/query-get-invoice.js"),
+      code: resolverFromFile("dist/query-get-my-membership.js"),
     });
 
-    rdsDs.createResolver("QueryGetInvoiceByNumberResolver", {
-      typeName: "Query",
-      fieldName: "getInvoiceByNumber",
+    const securedRdsResolver = (
+      id: string,
+      typeName: string,
+      fieldName: string,
+      resolverFile: string,
+    ) => {
+      const dataFn = new appsync.AppsyncFunction(this, `${id}RdsFn`, {
+        api: graphqlApi,
+        dataSource: rdsDs,
+        name: `${id}RdsFn`,
+        runtime: jsRuntime,
+        code: resolverFromFile(`dist/${resolverFile}.js`),
+      });
+
+      graphqlApi.createResolver(`${id}Resolver`, {
+        typeName,
+        fieldName,
+        runtime: jsRuntime,
+        code: resolverFromFile("dist/pipeline-forward.js"),
+        pipelineConfig: [membershipGuardFn, dataFn],
+      });
+    };
+
+    securedRdsResolver("QueryGetInvoice", "Query", "getInvoice", "query-get-invoice");
+    securedRdsResolver("QueryGetInvoiceByNumber", "Query", "getInvoiceByNumber", "query-get-invoice-by-number");
+    securedRdsResolver("QueryListInvoices", "Query", "listInvoices", "query-list-invoices");
+    securedRdsResolver("QueryGetAccount", "Query", "getAccount", "query-get-account");
+    securedRdsResolver("QueryListClients", "Query", "listClients", "query-list-clients");
+    securedRdsResolver("QueryGetClient", "Query", "getClient", "query-get-client");
+    securedRdsResolver("QueryGetBankAccount", "Query", "getBankAccount", "query-get-bank-account");
+    securedRdsResolver("MutationPutInvoice", "Mutation", "putInvoice", "mutation-put-invoice");
+    securedRdsResolver("MutationCreateInvoiceFull", "Mutation", "createInvoiceFull", "mutation-create-invoice-full");
+    securedRdsResolver("MutationPutClient", "Mutation", "putClient", "mutation-put-client");
+    securedRdsResolver("MutationPutInvoiceSection", "Mutation", "putInvoiceSection", "mutation-put-invoice-section");
+    securedRdsResolver("MutationPutInvoiceLineItem", "Mutation", "putInvoiceLineItem", "mutation-put-invoice-line-item");
+    securedRdsResolver("MutationDeleteInvoiceSection", "Mutation", "deleteInvoiceSection", "mutation-delete-invoice-section");
+    securedRdsResolver("MutationDeleteInvoiceLineItem", "Mutation", "deleteInvoiceLineItem", "mutation-delete-invoice-line-item");
+    securedRdsResolver("MutationDeleteInvoice", "Mutation", "deleteInvoice", "mutation-delete-invoice");
+    securedRdsResolver("InvoiceSections", "Invoice", "sections", "invoice-sections");
+    securedRdsResolver("InvoiceSectionLineItems", "InvoiceSection", "lineItems", "invoice-section-line-items");
+    securedRdsResolver("QueryGetContact", "Query", "getContact", "query-get-crm");
+    securedRdsResolver("QueryListContacts", "Query", "listContacts", "query-list-crm");
+    securedRdsResolver("QueryGetOpportunity", "Query", "getOpportunity", "query-get-crm");
+    securedRdsResolver("QueryListOpportunities", "Query", "listOpportunities", "query-list-crm");
+    securedRdsResolver("QueryGetProject", "Query", "getProject", "query-get-crm");
+    securedRdsResolver("QueryListProjects", "Query", "listProjects", "query-list-crm");
+    securedRdsResolver("QueryGetTask", "Query", "getTask", "query-get-crm");
+    securedRdsResolver("QueryListTasks", "Query", "listTasks", "query-list-crm");
+    securedRdsResolver("QueryGetCalendarEvent", "Query", "getCalendarEvent", "query-get-crm");
+    securedRdsResolver("QueryListCalendarEvents", "Query", "listCalendarEvents", "query-list-crm");
+    securedRdsResolver("QueryGetPayment", "Query", "getPayment", "query-get-crm");
+    securedRdsResolver("QueryListPayments", "Query", "listPayments", "query-list-crm");
+    securedRdsResolver("QueryListBankMovements", "Query", "listBankMovements", "query-list-crm");
+    securedRdsResolver("QueryGetCrmSummary", "Query", "getCrmSummary", "query-get-crm");
+    securedRdsResolver("QuerySearchWorkspace", "Query", "searchWorkspace", "query-list-crm");
+
+    // Audit log pipeline resolvers for sensitive mutations
+    const auditDs = graphqlApi.addDynamoDbDataSource("AuditLogDs", auditLogTable);
+
+    const auditWriteFn = new appsync.AppsyncFunction(this, "AuditWriteFn", {
+      api: graphqlApi,
+      dataSource: auditDs,
+      name: "AuditWriteFn",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/query-get-invoice-by-number.js"),
+      code: resolverFromFile("dist/fn-audit-write.js"),
     });
 
-    rdsDs.createResolver("QueryListInvoicesResolver", {
-      typeName: "Query",
-      fieldName: "listInvoices",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/query-list-invoices.js"),
-    });
+    const auditedRdsResolver = (
+      id: string,
+      fieldName: string,
+      resolverFile: "mutation-put-crm" | "mutation-delete-crm" | "mutation-action-crm",
+    ) => {
+      const dataFn = new appsync.AppsyncFunction(this, `${id}RdsFn`, {
+        api: graphqlApi,
+        dataSource: rdsDs,
+        name: `${id}RdsFn`,
+        runtime: jsRuntime,
+        code: resolverFromFile(`dist/${resolverFile}.js`),
+      });
 
-    rdsDs.createResolver("QueryGetAccountResolver", {
-      typeName: "Query",
-      fieldName: "getAccount",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/query-get-account.js"),
-    });
+      graphqlApi.createResolver(`${id}Resolver`, {
+        typeName: "Mutation",
+        fieldName,
+        runtime: jsRuntime,
+        code: resolverFromFile("dist/pipeline-crm-audit.js"),
+        pipelineConfig: [membershipGuardFn, dataFn, auditWriteFn],
+      });
+    };
 
-    rdsDs.createResolver("QueryListClientsResolver", {
-      typeName: "Query",
-      fieldName: "listClients",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/query-list-clients.js"),
-    });
+    auditedRdsResolver("MutationPutContact", "putContact", "mutation-put-crm");
+    auditedRdsResolver("MutationDeleteContact", "deleteContact", "mutation-delete-crm");
+    auditedRdsResolver("MutationSetContactFavorite", "setContactFavorite", "mutation-action-crm");
+    auditedRdsResolver("MutationPutOpportunity", "putOpportunity", "mutation-put-crm");
+    auditedRdsResolver("MutationDeleteOpportunity", "deleteOpportunity", "mutation-delete-crm");
+    auditedRdsResolver("MutationUpdateOpportunityStage", "updateOpportunityStage", "mutation-action-crm");
+    auditedRdsResolver("MutationPutProject", "putProject", "mutation-put-crm");
+    auditedRdsResolver("MutationDeleteProject", "deleteProject", "mutation-delete-crm");
+    auditedRdsResolver("MutationUpdateProjectStatus", "updateProjectStatus", "mutation-action-crm");
+    auditedRdsResolver("MutationPutTask", "putTask", "mutation-put-crm");
+    auditedRdsResolver("MutationDeleteTask", "deleteTask", "mutation-delete-crm");
+    auditedRdsResolver("MutationSetTaskCompleted", "setTaskCompleted", "mutation-action-crm");
+    auditedRdsResolver("MutationPutCalendarEvent", "putCalendarEvent", "mutation-put-crm");
+    auditedRdsResolver("MutationDeleteCalendarEvent", "deleteCalendarEvent", "mutation-delete-crm");
+    auditedRdsResolver("MutationRegisterPayment", "registerPayment", "mutation-action-crm");
+    auditedRdsResolver("MutationVoidPayment", "voidPayment", "mutation-action-crm");
+    auditedRdsResolver("MutationPutBankMovement", "putBankMovement", "mutation-action-crm");
+    auditedRdsResolver("MutationReconcilePayment", "reconcilePayment", "mutation-action-crm");
+    auditedRdsResolver("MutationUndoReconciliation", "undoReconciliation", "mutation-action-crm");
 
-    rdsDs.createResolver("QueryGetClientResolver", {
-      typeName: "Query",
-      fieldName: "getClient",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/query-get-client.js"),
-    });
-
-    rdsDs.createResolver("QueryGetBankAccountResolver", {
-      typeName: "Query",
-      fieldName: "getBankAccount",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/query-get-bank-account.js"),
-    });
-
-    rdsDs.createResolver("MutationPutInvoiceResolver", {
-      typeName: "Mutation",
-      fieldName: "putInvoice",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-put-invoice.js"),
-    });
-
-    rdsDs.createResolver("MutationPutAccountResolver", {
-      typeName: "Mutation",
-      fieldName: "putAccount",
+    const putAccountRdsFn = new appsync.AppsyncFunction(this, "PutAccountRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "PutAccountRdsFn",
       runtime: jsRuntime,
       code: resolverFromFile("dist/mutation-put-account.js"),
     });
 
-    rdsDs.createResolver("MutationPutClientResolver", {
+    graphqlApi.createResolver("MutationPutAccountResolver", {
       typeName: "Mutation",
-      fieldName: "putClient",
+      fieldName: "putAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-put-client.js"),
+      code: resolverFromFile("dist/pipeline-put-account.js"),
+      pipelineConfig: [membershipGuardFn, putAccountRdsFn, auditWriteFn],
     });
 
-    rdsDs.createResolver("MutationDeleteClientResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteClient",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-delete-client.js"),
-    });
-
-    rdsDs.createResolver("MutationPutBankAccountResolver", {
-      typeName: "Mutation",
-      fieldName: "putBankAccount",
+    const putBankAccountRdsFn = new appsync.AppsyncFunction(this, "PutBankAccountRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "PutBankAccountRdsFn",
       runtime: jsRuntime,
       code: resolverFromFile("dist/mutation-put-bank-account.js"),
     });
 
-    rdsDs.createResolver("MutationPutInvoiceSectionResolver", {
+    graphqlApi.createResolver("MutationPutBankAccountResolver", {
       typeName: "Mutation",
-      fieldName: "putInvoiceSection",
+      fieldName: "putBankAccount",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-put-invoice-section.js"),
+      code: resolverFromFile("dist/pipeline-put-bank-account.js"),
+      pipelineConfig: [membershipGuardFn, putBankAccountRdsFn, auditWriteFn],
     });
 
-    rdsDs.createResolver("MutationPutInvoiceLineItemResolver", {
-      typeName: "Mutation",
-      fieldName: "putInvoiceLineItem",
+    const deleteClientRdsFn = new appsync.AppsyncFunction(this, "DeleteClientRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "DeleteClientRdsFn",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-put-invoice-line-item.js"),
+      code: resolverFromFile("dist/mutation-delete-client.js"),
     });
 
-    rdsDs.createResolver("MutationDeleteInvoiceSectionResolver", {
+    graphqlApi.createResolver("MutationDeleteClientResolver", {
       typeName: "Mutation",
-      fieldName: "deleteInvoiceSection",
+      fieldName: "deleteClient",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-delete-invoice-section.js"),
+      code: resolverFromFile("dist/pipeline-delete-client.js"),
+      pipelineConfig: [membershipGuardFn, deleteClientRdsFn, auditWriteFn],
     });
 
-    rdsDs.createResolver("MutationDeleteInvoiceLineItemResolver", {
-      typeName: "Mutation",
-      fieldName: "deleteInvoiceLineItem",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-delete-invoice-line-item.js"),
-    });
-
-    rdsDs.createResolver("MutationUpdateInvoiceStatusResolver", {
-      typeName: "Mutation",
-      fieldName: "updateInvoiceStatus",
+    const updateInvoiceStatusRdsFn = new appsync.AppsyncFunction(this, "UpdateInvoiceStatusRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "UpdateInvoiceStatusRdsFn",
       runtime: jsRuntime,
       code: resolverFromFile("dist/mutation-update-invoice-status.js"),
     });
 
-    rdsDs.createResolver("MutationDeleteInvoiceResolver", {
+    graphqlApi.createResolver("MutationUpdateInvoiceStatusResolver", {
       typeName: "Mutation",
-      fieldName: "deleteInvoice",
+      fieldName: "updateInvoiceStatus",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/mutation-delete-invoice.js"),
+      code: resolverFromFile("dist/pipeline-update-invoice-status.js"),
+      pipelineConfig: [membershipGuardFn, updateInvoiceStatusRdsFn, auditWriteFn],
     });
 
-    rdsDs.createResolver("InvoiceSectionsResolver", {
-      typeName: "Invoice",
-      fieldName: "sections",
+    const requestInvoicePdfFn = new appsync.AppsyncFunction(this, "RequestInvoicePdfFn", {
+      api: graphqlApi,
+      dataSource: pdfLambdaDs,
+      name: "RequestInvoicePdfFn",
       runtime: jsRuntime,
-      code: resolverFromFile("dist/invoice-sections.js"),
+      code: resolverFromFile("mutation-request-invoice-pdf.js"),
     });
 
-    rdsDs.createResolver("InvoiceSectionLineItemsResolver", {
-      typeName: "InvoiceSection",
-      fieldName: "lineItems",
-      runtime: jsRuntime,
-      code: resolverFromFile("dist/invoice-section-line-items.js"),
-    });
-
-    pdfLambdaDs.createResolver("MutationRequestInvoicePdfResolver", {
+    graphqlApi.createResolver("MutationRequestInvoicePdfResolver", {
       typeName: "Mutation",
       fieldName: "requestInvoicePdf",
       runtime: jsRuntime,
-      code: resolverFromFile("mutation-request-invoice-pdf.js"),
+      code: resolverFromFile("dist/pipeline-forward.js"),
+      pipelineConfig: [membershipGuardFn, requestInvoicePdfFn],
+    });
+
+    const alarmDefaults = {
+      evaluationPeriods: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    } as const;
+
+    new cloudwatch.Alarm(this, "AppSyncServerErrorsAlarm", {
+      ...alarmDefaults,
+      alarmDescription: `AppSync ${props.stage} is returning server errors`,
+      metric: new cloudwatch.Metric({
+        namespace: "AWS/AppSync",
+        metricName: "5XXError",
+        dimensionsMap: { GraphQLAPIId: graphqlApi.apiId },
+        statistic: "Sum",
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1,
+    });
+
+    new cloudwatch.Alarm(this, "AppSyncLatencyAlarm", {
+      ...alarmDefaults,
+      alarmDescription: `AppSync ${props.stage} average latency exceeds five seconds`,
+      metric: new cloudwatch.Metric({
+        namespace: "AWS/AppSync",
+        metricName: "Latency",
+        dimensionsMap: { GraphQLAPIId: graphqlApi.apiId },
+        statistic: "Average",
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 5_000,
+    });
+
+    new cloudwatch.Alarm(this, "InvoicePdfErrorsAlarm", {
+      ...alarmDefaults,
+      alarmDescription: `Invoice PDF Lambda ${props.stage} is failing`,
+      metric: generateInvoicePdfFn.metricErrors({ period: cdk.Duration.minutes(5) }),
+      threshold: 1,
+    });
+
+    new cloudwatch.Alarm(this, "InvoicePdfThrottlesAlarm", {
+      ...alarmDefaults,
+      alarmDescription: `Invoice PDF Lambda ${props.stage} is being throttled`,
+      metric: generateInvoicePdfFn.metricThrottles({ period: cdk.Duration.minutes(5) }),
+      threshold: 1,
     });
 
     const cognitoIssuer = `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`;
@@ -425,6 +547,7 @@ export class AppFinancesBackendStack extends cdk.Stack {
     new cdk.CfnOutput(this, "AppSyncGraphqlUrl", { value: graphqlApi.graphqlUrl });
     new cdk.CfnOutput(this, "InvoicePdfMetadataTableName", { value: invoicePdfMetadataTable.tableName });
     new cdk.CfnOutput(this, "UserMembershipsTableName", { value: userMembershipsTable.tableName });
+    new cdk.CfnOutput(this, "AuditLogTableName", { value: auditLogTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfsBucketName", { value: invoicePdfsBucket.bucketName });
     new cdk.CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
     new cdk.CfnOutput(this, "CognitoUserPoolClientId", { value: userPoolClient.userPoolClientId });

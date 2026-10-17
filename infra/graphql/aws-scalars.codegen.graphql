@@ -1,0 +1,8 @@
+# AppSync define estos scalars implícitamente; este archivo existe solo para que
+# graphql-codegen pueda construir el schema. NO se despliega a AppSync.
+scalar AWSDate
+scalar AWSDateTime
+scalar AWSEmail
+scalar AWSPhone
+scalar AWSURL
+scalar AWSJSON

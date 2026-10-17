@@ -1,19 +1,19 @@
 export const companyProfile = {
   legalName: "LIGHTNING SERVICES OF TAMPA LLC",
   country: "United States",
-  accountNumber: "725563251",
-  routeAch: "267084131",
-  routeWire: "021000021",
+  accountNumber: "•••• 3251",
+  routeAch: "•••• 4131",
+  routeWire: "•••• 0021",
 };
 
 export const defaultSectionTemplate = [
   {
-    title: "Crew (Michigan)",
+    title: "Cuadrilla principal",
     items: [
-      { description: "Labor", quantity: 1, amount: 0 },
-      { description: "Gas", quantity: 1, amount: 0 },
-      { description: "Pier Diem", quantity: 1, amount: 0 },
-      { description: "Truck", quantity: 1, amount: 0 },
+      { description: "Mano de obra", quantity: 1, amount: 0 },
+      { description: "Combustible", quantity: 1, amount: 0 },
+      { description: "Viáticos", quantity: 1, amount: 0 },
+      { description: "Vehículo", quantity: 1, amount: 0 },
     ],
   },
 ];

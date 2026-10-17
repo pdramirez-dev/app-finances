@@ -148,7 +148,7 @@
   }
 
   .brand-surface {
-    @apply rounded-xl border border-white/40 bg-white/95 shadow-lg shadow-slate-950/10;
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-950/5;
   }
 }
 
@@ -158,4 +158,14 @@
     font-weight: 700;
     letter-spacing: -0.02em;
   }
+
+  .crm-scrollbar {
+    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-width: thin;
+  }
+}
+
+::selection {
+  background: color-mix(in oklab, var(--brand-cyan) 32%, white);
+  color: var(--brand-ink);
 }

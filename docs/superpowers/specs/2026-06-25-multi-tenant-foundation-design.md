@@ -8,7 +8,7 @@
 
 ## Contexto
 
-`app-finances` es una app de facturación (Next.js + NextAuth/Cognito + AppSync + DynamoDB + S3) que se quiere
+`app-nexo` es una app de facturación (Next.js + NextAuth/Cognito + AppSync + DynamoDB + S3) que se quiere
 evolucionar hacia una herramienta de gestión de proyectos para venderla como producto SaaS multi-empresa.
 
 La revisión de código encontró un fallo de seguridad sistémico: **el aislamiento multi-tenant está roto**.

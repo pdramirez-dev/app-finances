@@ -3,8 +3,9 @@ import {
   listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice, updateInvoiceStatus,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
   putClient, putBankAccount, putAccount,
-  putInvoiceCreate, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
+  normalizeMaskedBankValue, decodePageToken, nextPageToken,
 } from "./sql-builders";
 
 test("listInvoices scopes by claim accountId and ignores args.accountId", () => {
@@ -12,6 +13,33 @@ test("listInvoices scopes by claim accountId and ignores args.accountId", () => 
   expect(r.statement).toMatch(/account_id\s*=\s*:acc/i);
   expect(r.statement).not.toMatch(/\bScan\b/);
   expect(r.params.acc).toBe("ACC_A");
+});
+
+test("list builders paginate with offset and a stable tie-breaker order", () => {
+  const inv = listInvoices("ACC_A", { limit: 10, offset: 20 });
+  expect(inv.statement).toMatch(/ORDER BY created_at DESC, id DESC LIMIT :lim OFFSET :off/i);
+  expect(inv.params).toMatchObject({ lim: 10, off: 20 });
+
+  const cli = listClients("ACC_A", { limit: 10, offset: 20 });
+  expect(cli.statement).toMatch(/ORDER BY lower\(name\), id LIMIT :lim OFFSET :off/i);
+  expect(cli.params).toMatchObject({ lim: 10, off: 20 });
+});
+
+test("page tokens decode to offsets and reject tampered values", () => {
+  expect(decodePageToken(undefined)).toBe(0);
+  expect(decodePageToken(null)).toBe(0);
+  expect(decodePageToken("")).toBe(0);
+  expect(decodePageToken("50")).toBe(50);
+  expect(() => decodePageToken("abc")).toThrow(/pagination token/i);
+  expect(() => decodePageToken("-25")).toThrow(/pagination token/i);
+  expect(() => decodePageToken("1.5")).toThrow(/pagination token/i);
+});
+
+test("nextPageToken continues on full pages and stops on short pages", () => {
+  expect(nextPageToken(0, 25, 25)).toBe("25");
+  expect(nextPageToken(25, 25, 25)).toBe("50");
+  expect(nextPageToken(25, 25, 10)).toBeNull();
+  expect(nextPageToken(0, 25, 0)).toBeNull();
 });
 
 test("getInvoice requires both id and account scope", () => {
@@ -56,6 +84,13 @@ test("putBankAccount injects account_id from claim, not from input", () => {
   expect(r.statement).toMatch(/ON CONFLICT/i);
   expect(r.statement).toMatch(/WHERE bank_accounts\.account_id = :acc/i);
   expect(r.params.acc).toBe("ACC_A");
+});
+
+test("bank identifiers must already be safely masked", () => {
+  expect(normalizeMaskedBankValue("****6789")).toBe("****6789");
+  expect(normalizeMaskedBankValue("GB** **** 1234", 6)).toBe("GB** **** 1234");
+  expect(() => normalizeMaskedBankValue("123456789")).toThrow(/must be masked/i);
+  expect(() => normalizeMaskedBankValue("**123456")).toThrow(/final characters/i);
 });
 
 test("putAccount upserts with account id from claim and returns aliased columns", () => {
@@ -135,6 +170,7 @@ test("putInvoice (create) bumps the per-account counter and inserts atomically",
   expect(r.statement).toMatch(/ON CONFLICT[\s\S]*DO UPDATE SET/i);
   expect(r.statement).toMatch(/INSERT INTO invoices/i);
   expect(r.params.acc).toBe("ACC_A");
+  expect(r.statement).toMatch(/clients c WHERE c\.id = CAST\(:clientId AS uuid\) AND c\.account_id = :acc/i);
 });
 
 test("putInvoiceCreate RETURNING uses aliased invoice columns", () => {
@@ -142,8 +178,45 @@ test("putInvoiceCreate RETURNING uses aliased invoice columns", () => {
     billToName: "x", billToAddress: "y", project: "p", grandTotal: 10 } } as any);
   expect(r.statement).toMatch(/RETURNING/i);
   expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.statement).toMatch(/account_id AS "accountId"/);
+  expect(r.statement).toMatch(/client_id AS "clientId"/);
   expect(r.statement).toMatch(/invoice_number AS "invoiceNumber"/);
   expect(r.statement).not.toMatch(/RETURNING \*/);
+});
+
+test("createInvoiceFull is a single atomic statement with counter bump and tenant-scoped client check", () => {
+  const r = createInvoiceFull("ACC_A", { input: { clientId: "C1", date: "2026-01-01", weekNumber: 1,
+    billToName: "x", billToAddress: "y", project: "p", grandTotal: 10,
+    sections: [{ title: "S1", total: 10, lineItems: [{ description: "d", quantity: 1, amount: 10 }] }] } } as any);
+  expect(r.statement).toMatch(/INSERT INTO invoice_counters/i);
+  expect(r.statement).toMatch(/ON CONFLICT[\s\S]*DO UPDATE SET/i);
+  expect(r.statement).toMatch(/INSERT INTO invoices/i);
+  expect(r.statement).toMatch(/INSERT INTO invoice_sections/i);
+  expect(r.statement).toMatch(/INSERT INTO invoice_line_items/i);
+  expect(r.statement).toMatch(/clients c WHERE c\.id = CAST\(:clientId AS uuid\) AND c\.account_id = :acc/i);
+  expect(r.statement).toMatch(/RETURNING/i);
+  expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.params.acc).toBe("ACC_A");
+});
+
+test("createInvoiceFull serializes sections with positions derived from array order", () => {
+  const r = createInvoiceFull("ACC_A", { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "x", billToAddress: "y", project: "p", grandTotal: 30,
+    sections: [
+      { title: "S1", total: 10, lineItems: [{ description: "a", quantity: 1, amount: 10 }] },
+      { title: "S2", total: 20, lineItems: [
+        { description: "b", quantity: 2, amount: 5 },
+        { description: "c", quantity: 1, amount: 10 },
+      ] },
+    ] } } as any);
+  const sections = JSON.parse(r.params.sections as string);
+  expect(sections).toEqual([
+    { title: "S1", position: 0, total: 10, items: [{ description: "a", quantity: 1, amount: 10, position: 0 }] },
+    { title: "S2", position: 1, total: 20, items: [
+      { description: "b", quantity: 2, amount: 5, position: 0 },
+      { description: "c", quantity: 1, amount: 10, position: 1 },
+    ] },
+  ]);
 });
 
 test("putInvoiceSection scopes via invoices join and returns aliased section cols", () => {

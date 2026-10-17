@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
+import { PasswordField } from "@/components/auth/password-field";
 import { clearStoredChallenge, useStoredChallenge, writeStoredChallenge } from "@/lib/auth-flow-client";
+import { getAuthRequestMessage, postAuthJson } from "@/lib/auth-api-client";
 import type { SafeChallenge } from "@/lib/auth-flow-tickets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,12 +30,12 @@ type ChallengeResponse =
 function getChallengeTitle(challengeName: SafeChallenge["challengeName"]) {
   switch (challengeName) {
     case "NEW_PASSWORD_REQUIRED":
-      return "Actualiza tu password";
+      return "Actualiza tu contraseña";
     case "MFA_SETUP":
       return "Configura tu MFA";
     case "SELECT_CHALLENGE":
     case "SELECT_MFA_TYPE":
-      return "Selecciona un metodo";
+      return "Selecciona un método";
     default:
       return "Verifica tu acceso";
   }
@@ -42,24 +44,24 @@ function getChallengeTitle(challengeName: SafeChallenge["challengeName"]) {
 function getChallengeDescription(challenge: SafeChallenge) {
   switch (challenge.challengeName) {
     case "NEW_PASSWORD_REQUIRED":
-      return "Cognito exige un nuevo password antes de habilitar el acceso.";
+      return "Tu organización requiere una nueva contraseña antes de habilitar el acceso.";
     case "MFA_SETUP":
       return challenge.totpSecretCode
-        ? "Escanea o copia la clave secreta en tu app autenticadora y luego ingresa el codigo generado."
+        ? "Escanea o copia la clave secreta en tu aplicación autenticadora y luego ingresa el código generado."
         : "Tu cuenta requiere configurar MFA antes de continuar.";
     case "SELECT_CHALLENGE":
     case "SELECT_MFA_TYPE":
-      return "Elige el factor que quieres usar para completar la autenticacion.";
+      return "Elige el método que quieres usar para completar la autenticación.";
     case "EMAIL_OTP":
     case "SMS_OTP":
     case "SMS_MFA":
     case "SOFTWARE_TOKEN_MFA":
     case "CUSTOM_CHALLENGE":
       return challenge.deliveryDestination
-        ? `Ingresa el codigo enviado a ${challenge.deliveryDestination}.`
-        : "Ingresa el codigo de verificacion para continuar.";
+        ? `Ingresa el código enviado a ${challenge.deliveryDestination}.`
+        : "Ingresa el código de verificación para continuar.";
     default:
-      return "Completa el paso adicional requerido por Cognito.";
+      return "Completa el paso adicional requerido para proteger tu cuenta.";
   }
 }
 
@@ -67,10 +69,23 @@ function codeLabel(challengeName: SafeChallenge["challengeName"]) {
   switch (challengeName) {
     case "SOFTWARE_TOKEN_MFA":
     case "MFA_SETUP":
-      return "Codigo del autenticador";
+      return "Código del autenticador";
     default:
-      return "Codigo";
+      return "Código";
   }
+}
+
+function challengeOptionLabel(challengeName: string) {
+  const labels: Record<string, string> = {
+    EMAIL_OTP: "Código por correo electrónico",
+    SMS_MFA: "Código por mensaje de texto",
+    SMS_OTP: "Código por mensaje de texto",
+    SOFTWARE_TOKEN_MFA: "Aplicación autenticadora",
+    PASSWORD: "Contraseña",
+    PASSWORD_SRP: "Contraseña segura",
+  };
+
+  return labels[challengeName] ?? challengeName.replaceAll("_", " ").toLocaleLowerCase("es");
 }
 
 export function ChallengeForm() {
@@ -100,7 +115,7 @@ export function ChallengeForm() {
       return null;
     }
 
-    const issuer = challenge.totpIssuer ?? "App Finances";
+    const issuer = challenge.totpIssuer ?? "Nexo";
     return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(stored.email)}?secret=${challenge.totpSecretCode}&issuer=${encodeURIComponent(issuer)}`;
   }, [challenge?.totpIssuer, challenge?.totpSecretCode, stored?.email]);
 
@@ -111,13 +126,13 @@ export function ChallengeForm() {
       redirect: false,
     });
 
-    if (result?.error) {
-      setFormError("Cognito valido el challenge, pero no se pudo crear la sesion local.");
+    if (!result || result.error) {
+      setFormError("La verificación fue correcta, pero no pudimos crear la sesión. Inténtalo de nuevo.");
       return;
     }
 
     clearStoredChallenge();
-    router.push("/invoices");
+    router.push("/dashboard");
     router.refresh();
   }
 
@@ -136,30 +151,24 @@ export function ChallengeForm() {
     setFormError(null);
 
     startTotpTransition(async () => {
-      const response = await fetch("/api/cognito/challenge/setup-totp", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+      try {
+        const { ok, payload } = await postAuthJson<ChallengeResponse>("/api/cognito/challenge/setup-totp", {
           challengeTicket: stored.challengeTicket,
-        }),
-      });
+        });
 
-      const payload = (await response.json()) as ChallengeResponse;
+        if (!ok || !("status" in payload) || payload.status !== "challenge") {
+          setFormError("error" in payload ? payload.error : "No fue posible iniciar la configuración MFA.");
+          return;
+        }
 
-      if (!response.ok || !("status" in payload) || payload.status !== "challenge") {
-        setFormError("error" in payload ? payload.error : "No fue posible iniciar la configuracion MFA.");
-        return;
+        writeStoredChallenge({
+          challenge: payload.challenge,
+          challengeTicket: payload.challengeTicket,
+          email: stored.email,
+        });
+      } catch (error) {
+        setFormError(getAuthRequestMessage(error, "No fue posible iniciar la configuración MFA."));
       }
-
-      const nextState = {
-        challenge: payload.challenge,
-        challengeTicket: payload.challengeTicket,
-        email: stored.email,
-      };
-
-      writeStoredChallenge(nextState);
     });
   }
 
@@ -171,59 +180,57 @@ export function ChallengeForm() {
     }
 
     if (challenge?.challengeName === "NEW_PASSWORD_REQUIRED" && newPassword !== confirmPassword) {
-      setFormError("Los passwords nuevos no coinciden.");
+      setFormError("Las contraseñas nuevas no coinciden.");
       return;
     }
 
     setFormError(null);
 
     startTransition(async () => {
-      const response = await fetch("/api/cognito/challenge", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+      try {
+        const { ok, payload } = await postAuthJson<ChallengeResponse>("/api/cognito/challenge", {
           challengeTicket: stored.challengeTicket,
           code,
           newPassword,
           selectedChallenge: effectiveSelectedChallenge,
           requiredAttributes,
           deviceName,
-        }),
-      });
+        });
 
-      const payload = (await response.json()) as ChallengeResponse;
+        if (!ok) {
+          setFormError("error" in payload ? payload.error : "No fue posible completar la verificación.");
+          return;
+        }
 
-      if (!response.ok) {
-        setFormError("error" in payload ? payload.error : "No fue posible completar el challenge.");
-        return;
+        if ("status" in payload && payload.status === "authenticated") {
+          await completeSession(payload.authTicket);
+          return;
+        }
+
+        if (!("status" in payload) || payload.status !== "challenge") {
+          setFormError("No fue posible avanzar al siguiente paso.");
+          return;
+        }
+
+        writeStoredChallenge({
+          challenge: payload.challenge,
+          challengeTicket: payload.challengeTicket,
+          email: stored.email,
+        });
+        setCode("");
+        setSelectedChallenge("");
+      } catch (error) {
+        setFormError(getAuthRequestMessage(error, "No fue posible completar la verificación."));
       }
-
-      if ("status" in payload && payload.status === "authenticated") {
-        await completeSession(payload.authTicket);
-        return;
-      }
-
-      if (!("status" in payload) || payload.status !== "challenge") {
-        setFormError("No fue posible avanzar al siguiente paso.");
-        return;
-      }
-
-      const nextState = {
-        challenge: payload.challenge,
-        challengeTicket: payload.challengeTicket,
-        email: stored.email,
-      };
-
-      writeStoredChallenge(nextState);
-      setCode("");
-      setSelectedChallenge("");
     });
   }
 
   if (!challenge || !stored) {
-    return null;
+    return (
+      <section className="flex min-h-[420px] items-center justify-center rounded-3xl border border-white/35 bg-white p-6 shadow-2xl shadow-slate-950/25 sm:p-8" aria-live="polite">
+        <p className="text-sm text-slate-600">Cargando verificación de acceso...</p>
+      </section>
+    );
   }
 
   const requiresCode = [
@@ -242,23 +249,26 @@ export function ChallengeForm() {
     challenge.availableChallenges.length === 0 || challenge.availableChallenges.includes("SOFTWARE_TOKEN_MFA");
 
   return (
-    <section className="flex h-full flex-col justify-between gap-8 rounded-3xl border border-white/35 bg-white p-8 shadow-2xl shadow-slate-950/25">
+    <section
+      className="flex h-full flex-col justify-between gap-8 rounded-3xl border border-white/35 bg-white p-6 shadow-2xl shadow-slate-950/25 sm:p-8"
+      aria-labelledby="challenge-title"
+    >
       <div className="space-y-4">
         <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-          Access Challenge
+          Verificación de acceso
         </p>
-        <h2 className="brand-heading text-2xl text-slate-950">{getChallengeTitle(challenge.challengeName)}</h2>
+        <h2 id="challenge-title" className="brand-heading text-2xl text-slate-950">{getChallengeTitle(challenge.challengeName)}</h2>
         <p className="text-sm leading-relaxed text-slate-600">{getChallengeDescription(challenge)}</p>
-        <p className="text-xs text-slate-500">Cuenta: {stored.email}</p>
+        <p className="break-all text-xs text-slate-500">Cuenta: {stored.email}</p>
         {formError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</p>
+          <p id="challenge-error" role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{formError}</p>
         ) : null}
       </div>
 
       <form className="space-y-5" onSubmit={handleSubmit}>
         {isSelection ? (
           <div className="space-y-3">
-            <Label>Metodo disponible</Label>
+            <Label>Método disponible</Label>
             {challenge.availableChallenges.length > 0 ? (
               challenge.availableChallenges.map((item) => (
                 <label
@@ -272,12 +282,12 @@ export function ChallengeForm() {
                     checked={effectiveSelectedChallenge === item}
                     onChange={(event) => setSelectedChallenge(event.target.value)}
                   />
-                  <span>{item}</span>
+                  <span className="first-letter:uppercase">{challengeOptionLabel(item)}</span>
                 </label>
               ))
             ) : (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Cognito solicito una seleccion, pero no devolvio metodos disponibles.
+                Tu cuenta solicita elegir un método, pero no hay opciones disponibles. Reinicia el acceso o contacta a un administrador.
               </p>
             )}
           </div>
@@ -285,28 +295,36 @@ export function ChallengeForm() {
 
         {isNewPassword ? (
           <>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">Nuevo password</Label>
-              <Input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirmar password</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-              />
-            </div>
+            <PasswordField
+              id="new-password"
+              label="Nueva contraseña"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(event) => {
+                setNewPassword(event.target.value);
+                setFormError(null);
+              }}
+              minLength={8}
+              aria-invalid={Boolean(formError)}
+              aria-describedby={formError ? "challenge-error" : undefined}
+              disabled={isPending}
+              required
+            />
+            <PasswordField
+              id="confirm-password"
+              label="Confirmar contraseña"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(event) => {
+                setConfirmPassword(event.target.value);
+                setFormError(null);
+              }}
+              minLength={8}
+              aria-invalid={Boolean(formError)}
+              aria-describedby={formError ? "challenge-error" : undefined}
+              disabled={isPending}
+              required
+            />
             {challenge.requiredAttributes.map((attribute) => (
               <div key={attribute} className="space-y-2">
                 <Label htmlFor={attribute}>{attribute}</Label>
@@ -314,6 +332,8 @@ export function ChallengeForm() {
                   id={attribute}
                   value={requiredAttributes[attribute] ?? ""}
                   onChange={(event) => handleRequiredAttributeChange(attribute, event.target.value)}
+                  className="h-11"
+                  disabled={isPending}
                   required
                 />
               </div>
@@ -324,7 +344,7 @@ export function ChallengeForm() {
         {isMfaSetup && !challenge.totpSecretCode ? (
           <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
             <p className="text-sm text-slate-700">
-              Para completar el acceso debes registrar un autenticador TOTP. La configuracion se hace dentro de esta
+              Para completar el acceso debes registrar un autenticador TOTP. La configuración se hace dentro de esta
               misma app.
             </p>
             {canSetupSoftwareToken ? (
@@ -333,8 +353,8 @@ export function ChallengeForm() {
               </Button>
             ) : (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                El pool de Cognito exige un setup MFA que no expone TOTP directamente en este flujo. Ajusta el factor
-                permitido en Cognito o reinicia el acceso con otro metodo.
+                Tu organización requiere un método MFA que no está disponible en este flujo. Contacta a un administrador
+                o reinicia el acceso con otro método.
               </p>
             )}
           </div>
@@ -358,7 +378,9 @@ export function ChallengeForm() {
                 id="device-name"
                 value={deviceName}
                 onChange={(event) => setDeviceName(event.target.value)}
-                placeholder="iPhone PM / 1Password / Authy"
+                placeholder="Por ejemplo: teléfono de trabajo"
+                className="h-11"
+                disabled={isPending}
               />
             </div>
           </div>
@@ -372,7 +394,15 @@ export function ChallengeForm() {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={code}
-              onChange={(event) => setCode(event.target.value)}
+              onChange={(event) => {
+                setCode(event.target.value);
+                setFormError(null);
+              }}
+              className="h-11 tracking-[0.2em]"
+              aria-invalid={Boolean(formError)}
+              aria-describedby={formError ? "challenge-error" : undefined}
+              disabled={isPending}
+              autoFocus
               required
             />
           </div>
@@ -381,17 +411,23 @@ export function ChallengeForm() {
         <Button
           className="h-11 w-full bg-gradient-to-r from-[#0a1226] via-[#13264d] to-[#1e3f6f] text-sm font-semibold text-white hover:from-[#121d38] hover:to-[#285187]"
           type="submit"
-          disabled={isPending || (isMfaSetup && !challenge.totpSecretCode)}
+          disabled={
+            isPending ||
+            isSettingUpTotp ||
+            (isMfaSetup && !challenge.totpSecretCode) ||
+            (isSelection && !effectiveSelectedChallenge)
+          }
+          aria-busy={isPending || isSettingUpTotp}
         >
           {isPending ? "Validando..." : "Continuar"}
         </Button>
 
         <div className="flex items-center justify-between text-xs text-slate-500">
           <Link href="/login" onClick={() => clearStoredChallenge()} className="underline underline-offset-4">
-            Reiniciar login
+            Reiniciar acceso
           </Link>
           <Link href="/login/forgot-password" prefetch={false} className="underline underline-offset-4">
-            Reset password
+            Cambiar contraseña
           </Link>
         </div>
       </form>

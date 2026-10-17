@@ -1,0 +1,127 @@
+name: Deploy Amplify
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: amplify-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AMPLIFY_APP_ID_DEV: ${{ vars.AMPLIFY_APP_ID_DEV }}
+      AMPLIFY_APP_ID_PROD: ${{ vars.AMPLIFY_APP_ID_PROD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install infra dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Build infra
+        working-directory: infra
+        run: npm run build
+
+      - name: Select Amplify app
+        id: amplify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            app_id="${AMPLIFY_APP_ID_PROD}"
+          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            app_id="${AMPLIFY_APP_ID_DEV}"
+          else
+            echo "Unsupported branch: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+          if [[ -z "${app_id}" ]]; then
+            echo "Missing Amplify app id for branch ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+          echo "app_id=${app_id}" >> "${GITHUB_OUTPUT}"
+          echo "branch_name=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Start Amplify deploy
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          job_id="$(
+            aws amplify start-job \
+              --app-id "${{ steps.amplify.outputs.app_id }}" \
+              --branch-name "${{ steps.amplify.outputs.branch_name }}" \
+              --job-type RELEASE \
+              --query 'jobSummary.jobId' \
+              --output text
+          )"
+
+          echo "job_id=${job_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for Amplify deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..90}; do
+            status="$(
+              aws amplify get-job \
+                --app-id "${{ steps.amplify.outputs.app_id }}" \
+                --branch-name "${{ steps.amplify.outputs.branch_name }}" \
+                --job-id "${{ steps.deploy.outputs.job_id }}" \
+                --query 'job.summary.status' \
+                --output text
+            )"
+
+            echo "Amplify job status: ${status}"
+
+            case "${status}" in
+              SUCCEED)
+                exit 0
+                ;;
+              FAILED|CANCELLED)
+                exit 1
+                ;;
+            esac
+
+            sleep 20
+          done
+
+          echo "Timed out waiting for Amplify deploy" >&2
+          exit 1

@@ -89,11 +89,11 @@ services:
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
-      POSTGRES_DB: app_finances_test
+      POSTGRES_DB: app_nexo_test
     ports:
       - "55432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app_finances_test"]
+      test: ["CMD-SHELL", "pg_isready -U app -d app_nexo_test"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -130,7 +130,7 @@ import { runMigrations } from "./migrate";
 
 const DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
-  "postgres://app:app@localhost:55432/app_finances_test";
+  "postgres://app:app@localhost:55432/app_nexo_test";
 
 let client: Client;
 
@@ -348,11 +348,11 @@ git commit -m "feat(db): add initial Postgres schema and idempotent migration ru
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { test, expect } from "vitest";
-import { AppFinancesBackendStack } from "../lib/stacks/backend-stack";
+import { AppNexoBackendStack } from "../lib/stacks/backend-stack";
 
 function synth() {
   const app = new App();
-  const stack = new AppFinancesBackendStack(app, "Test", {
+  const stack = new AppNexoBackendStack(app, "Test", {
     stage: "dev",
     callbackUrls: ["http://localhost:3000"],
     logoutUrls: ["http://localhost:3000"],
@@ -394,7 +394,7 @@ const dbCluster = new rds.DatabaseCluster(this, "DomainDb", {
   serverlessV2MinCapacity: 0,
   serverlessV2MaxCapacity: 2,
   enableDataApi: true,
-  defaultDatabaseName: "app_finances",
+  defaultDatabaseName: "app_nexo",
   writer: rds.ClusterInstance.serverlessV2("Writer"),
   removalPolicy,
 });
@@ -410,7 +410,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Verificar que el stack sintetiza**
 
-Run: `cd infra && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK` sin errores.
 
 - [ ] **Step 6: Commit**

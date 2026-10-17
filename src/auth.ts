@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { readAuthTicket } from "@/lib/auth-flow-tickets";
 import { resolveAuthSecret } from "@/lib/auth-secret";
+import { refreshCognitoTokens } from "@/lib/cognito-auth";
+import { applyRefreshedTokens, isExpiringSoon } from "@/lib/token-refresh";
 
 const credentialsSchema = z.object({
   mode: z.literal("ticket"),
@@ -56,27 +58,43 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: ticket.user.name,
           accessToken: ticket.accessToken,
           idToken: ticket.idToken,
+          refreshToken: ticket.refreshToken,
+          idTokenExpiresAt: Date.now() + ticket.expiresIn * 1000,
         };
       },
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = String(user.id);
         token.accessToken = typeof user.accessToken === "string" ? user.accessToken : undefined;
         token.idToken = typeof user.idToken === "string" ? user.idToken : undefined;
+        token.refreshToken = typeof user.refreshToken === "string" ? user.refreshToken : undefined;
+        token.idTokenExpiresAt =
+          typeof user.idTokenExpiresAt === "number"
+            ? user.idTokenExpiresAt
+            : Date.now() + 60 * 60 * 1000;
+        return token;
       }
 
-      return token;
+      if (!isExpiringSoon(token.idTokenExpiresAt, Date.now(), 5 * 60 * 1000)) {
+        return token;
+      }
+
+      try {
+        const refreshed = await refreshCognitoTokens(token.refreshToken ?? "");
+        return applyRefreshedTokens(token, refreshed, Date.now());
+      } catch {
+        return { ...token, error: "RefreshAccessTokenError" as const };
+      }
     },
     session({ session, token }) {
       if (session.user) {
         session.user.id = String(token.id ?? token.sub ?? "");
       }
 
-      session.accessToken = typeof token.accessToken === "string" ? token.accessToken : undefined;
-      session.idToken = typeof token.idToken === "string" ? token.idToken : undefined;
+      session.error = token.error;
       return session;
     },
   },

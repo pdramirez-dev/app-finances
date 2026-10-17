@@ -1,3 +1,3 @@
 {
-  "app": "node --import tsx bin/app-finances.ts"
+  "app": "node --import tsx bin/app-nexo.ts"
 }

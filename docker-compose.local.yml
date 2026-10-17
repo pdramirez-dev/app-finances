@@ -1,0 +1,61 @@
+name: app-nexo-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${LOCAL_POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-app_nexo}
+    ports:
+      - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-local-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${LOCAL_POSTGRES_USER:-app} -d ${LOCAL_POSTGRES_DB:-app_nexo}",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  localstack:
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack-pro:latest}
+    ports:
+      - "127.0.0.1:${LOCALSTACK_PORT:-4566}:4566"
+    environment:
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      SERVICES: ${LOCALSTACK_SERVICES:-dynamodb,s3,lambda,iam,sts}
+      DEBUG: ${LOCALSTACK_DEBUG:-0}
+      PERSISTENCE: ${LOCALSTACK_PERSISTENCE:-0}
+      LOCALSTACK_ENABLE_COGNITO: ${LOCALSTACK_ENABLE_COGNITO:-false}
+      LOCAL_POSTGRES_PORT: ${LOCAL_POSTGRES_PORT:-5432}
+      LOCAL_POSTGRES_USER: ${LOCAL_POSTGRES_USER:-app}
+      LOCAL_POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-app}
+      LOCAL_POSTGRES_DB: ${LOCAL_POSTGRES_DB:-app_nexo}
+      LOCAL_COGNITO_EMAIL: ${LOCAL_COGNITO_EMAIL:-admin@app-nexo.local}
+      LOCAL_COGNITO_PASSWORD: ${LOCAL_COGNITO_PASSWORD:-LocalPass123!}
+      LOCAL_ACCOUNT_ID: ${LOCAL_ACCOUNT_ID:-00000000-0000-4000-8000-000000000001}
+    volumes:
+      - ./.localstack:/var/lib/localstack
+      - ./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/10-app-nexo.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "http://localhost:4566/_localstack/health",
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+volumes:
+  postgres-local-data:

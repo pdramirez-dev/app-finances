@@ -58,7 +58,7 @@ Expected: FAIL — no existe la tabla con esas props.
 
 ```ts
 const auditLogTable = new dynamodb.Table(this, "AuditLogTable", {
-  tableName: `app-finances-${props.stage}-audit-log`,
+  tableName: `app-nexo-${props.stage}-audit-log`,
   partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
   sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -314,7 +314,7 @@ Repetir para `putBankAccount`, `deleteClient`, `putAccount` con su función RDS 
 
 - [ ] **Step 4: Bundlear y sintetizar**
 
-Run: `cd infra && npm run build:resolvers && npx cdk synth AppFinances-Backend-dev > /dev/null && echo OK`
+Run: `cd infra && npm run build:resolvers && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
 - [ ] **Step 5: Commit**
@@ -331,9 +331,9 @@ git commit -m "feat(audit): pipeline resolvers writing audit entries for sensiti
 **Files:** ninguno (procedimiento de verificación).
 
 - [ ] **Step 1: Documentar la verificación manual** en el PR/notas de despliegue:
-  1. `cdk deploy AppFinances-Backend-dev`.
+  1. `cdk deploy AppNexo-Backend-dev`.
   2. Como usuario de la cuenta A, ejecutar `updateInvoiceStatus` sobre un invoice propio.
-  3. `aws dynamodb query` sobre `app-finances-dev-audit-log` con `accountId = <A>` → existe una entrada con `action=STATUS_CHANGE`, `entityType=INVOICE`, `actor=<email>`, `at` reciente.
+  3. `aws dynamodb query` sobre `app-nexo-dev-audit-log` con `accountId = <A>` → existe una entrada con `action=STATUS_CHANGE`, `entityType=INVOICE`, `actor=<email>`, `at` reciente.
   4. Repetir para `putBankAccount`, `deleteClient`, `putAccount`.
 
 - [ ] **Step 2: Confirmar no-regresión de mutaciones**
