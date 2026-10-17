@@ -142,10 +142,16 @@ export async function updateInvoiceAction(
     return { error: parsed.error };
   }
 
+  const expectedVersion = Number(formData.get("expectedVersion"));
+
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return { error: "Recarga la página e inténtalo de nuevo" };
+  }
+
   try {
-    await updateInvoiceFull(invoiceId, parsed.input);
+    await updateInvoiceFull(invoiceId, { ...parsed.input, expectedVersion });
   } catch {
-    return { error: "No se pudo guardar la factura. Verifica que no esté pagada e inténtalo de nuevo." };
+    return { error: "No se pudo guardar la factura: cambió mientras la editabas, ya está pagada, el total queda por debajo de lo cobrado o cambiaría la moneda con pagos registrados. Recarga la página e inténtalo de nuevo." };
   }
 
   revalidatePath("/invoices");

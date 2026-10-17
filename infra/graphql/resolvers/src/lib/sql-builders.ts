@@ -26,7 +26,7 @@ export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string
 }
 
 const INVOICE_COLS =
-  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", version, date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 // Same format as formatInvoiceNumber in the web app: "12" for the general
 // numbering, "A-0012" for a series (padded to 4 digits, never truncated).
@@ -276,8 +276,12 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
   };
 }
 
-// Paid invoices are immutable, and the new total may not drop below the
-// non-voided payments already registered; status and invoice number are left untouched
+// Paid invoices are immutable, the new total may not drop below the non-voided
+// payments already registered, and the currency is fixed once payments exist.
+// expectedVersion must match: under READ COMMITTED a second, overlapping edit
+// waits for the row lock and then re-checks the row, sees the bumped version
+// and does nothing, instead of deleting sections from a stale snapshot. Status
+// and invoice number are left untouched
 // (status changes go through updateInvoiceStatus). Old sections are deleted in
 // the same statement, so their line items cascade and the new ones replace them.
 export function updateInvoiceFull(acc: string, args: { invoiceId: string; input: any }): SqlRequest {
@@ -285,6 +289,15 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
   return {
     statement: `WITH target AS (
         SELECT id FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'
+          AND version = :expectedVersion
+          AND (
+            CAST(:currency AS text) IS NULL
+            OR upper(CAST(:currency AS text)) = upper(invoices.currency)
+            OR NOT EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
+            )
+          )
           AND :grandTotal >= COALESCE((
             SELECT sum(p.amount) FROM payments p
             WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
@@ -299,7 +312,7 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
         UPDATE invoices inv SET client_id = valid_client.id, date = :date, due_date = :dueDate,
           week_number = :week, bill_to_name = :billName, bill_to_address = :billAddr, project = :project,
           currency = COALESCE(CAST(:currency AS text), inv.currency), notes = :notes,
-          grand_total = :grandTotal, updated_at = now()
+          grand_total = :grandTotal, version = inv.version + 1, updated_at = now()
         FROM target CROSS JOIN valid_client
         WHERE inv.id = target.id
         RETURNING inv.*
@@ -311,7 +324,7 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
     params: { acc, invoiceId: args.invoiceId, clientId: i.clientId ?? null, date: i.date,
               dueDate: i.dueDate ?? null, week: i.weekNumber, billName: i.billToName,
               billAddr: i.billToAddress, project: i.project, currency: i.currency ?? null,
-              notes: i.notes ?? null, grandTotal: i.grandTotal,
+              notes: i.notes ?? null, grandTotal: i.grandTotal, expectedVersion: i.expectedVersion,
               sections: serializeInvoiceSections(i.sections) },
   };
 }

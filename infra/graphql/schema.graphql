@@ -238,6 +238,7 @@ type Invoice {
   invoiceNumber: Int!
   seriesId: ID
   seriesCode: String!
+  version: Int!
   date: AWSDate!
   dueDate: AWSDate
   weekNumber: Int!
@@ -575,6 +576,7 @@ input PutInvoiceSeriesInput {
 }
 
 input UpdateInvoiceFullInput {
+  expectedVersion: Int!
   clientId: ID
   date: AWSDate!
   dueDate: AWSDate

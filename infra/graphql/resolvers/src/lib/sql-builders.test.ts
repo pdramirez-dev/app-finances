@@ -378,3 +378,12 @@ test("markInvoiceSent only moves drafts of the caller's account", () => {
   expect(r.statement).toMatch(/SET status = 'SENT'/);
   expect(r.statement).toMatch(/WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'/);
 });
+
+test("updateInvoiceFull requires the opened version, bumps it, and freezes the currency once paid", () => {
+  const r = updateInvoiceFull("ACC_A", { invoiceId: "INV1", input: { expectedVersion: 3, currency: "EUR", date: "2026-01-01",
+    weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(r.statement).toMatch(/AND version = :expectedVersion/);
+  expect(r.statement).toMatch(/version = inv\.version \+ 1/);
+  expect(r.statement).toMatch(/upper\(CAST\(:currency AS text\)\) = upper\(invoices\.currency\)\s+OR NOT EXISTS/);
+  expect(r.params).toMatchObject({ expectedVersion: 3, currency: "EUR" });
+});
