@@ -34,7 +34,7 @@
 - Modify: `src/lib/cognito-auth.ts`, `src/lib/auth-flow-tickets.ts`, `src/app/api/cognito/login/route.ts`
 - Test: `src/lib/auth-flow-tickets.test.ts`
 
-- [ ] **Step 1: Test que falla — el ticket round-trip conserva refreshToken**
+- [x] **Step 1: Test que falla — el ticket round-trip conserva refreshToken**
 
 `src/lib/auth-flow-tickets.test.ts`:
 ```ts
@@ -53,12 +53,12 @@ test("auth ticket carries the refresh token", () => {
 });
 ```
 
-- [ ] **Step 2: Correr y verificar que falla**
+- [x] **Step 2: Correr y verificar que falla**
 
 Run: `npx vitest run src/lib/auth-flow-tickets.test.ts`
 Expected: FAIL — `refreshToken` no es parte del payload.
 
-- [ ] **Step 3: Añadir `refreshToken` al tipo del ticket**
+- [x] **Step 3: Añadir `refreshToken` al tipo del ticket**
 
 En `src/lib/auth-flow-tickets.ts`, `AuthTicketPayload`:
 ```ts
@@ -70,14 +70,14 @@ export type AuthTicketPayload = BaseTicket<"auth"> & {
 };
 ```
 
-- [ ] **Step 4: Añadir `refreshToken` al resultado de Cognito**
+- [x] **Step 4: Añadir `refreshToken` al resultado de Cognito**
 
 En `src/lib/cognito-auth.ts`:
 - `CognitoSuccessResult` += `refreshToken: string;`
 - En `normalizeAuthResult`, leer `payload.AuthenticationResult?.RefreshToken` y devolverlo (puede faltar en respuestas de challenge intermedias; usar `?? ""`).
 - Tipar `RefreshToken?: string` en los genéricos de `AuthenticationResult`.
 
-- [ ] **Step 5: Incluir refreshToken en el login route**
+- [x] **Step 5: Incluir refreshToken en el login route**
 
 En `src/app/api/cognito/login/route.ts`, al crear el `createAuthTicket`:
 ```ts
@@ -89,12 +89,12 @@ authTicket: createAuthTicket({
 }),
 ```
 
-- [ ] **Step 6: Correr y verificar que pasa**
+- [x] **Step 6: Correr y verificar que pasa**
 
 Run: `npx vitest run src/lib/auth-flow-tickets.test.ts && npx tsc --noEmit`
 Expected: PASS y sin errores de tipos.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/cognito-auth.ts src/lib/auth-flow-tickets.ts src/lib/auth-flow-tickets.test.ts src/app/api/cognito/login/route.ts
@@ -109,7 +109,7 @@ git commit -m "feat(auth): carry Cognito refresh token through the auth ticket"
 - Modify: `src/lib/cognito-auth.ts`
 - Test: `src/lib/cognito-auth.test.ts`
 
-- [ ] **Step 1: Test que falla — el payload de refresh es correcto**
+- [x] **Step 1: Test que falla — el payload de refresh es correcto**
 
 `src/lib/cognito-auth.test.ts`:
 ```ts
@@ -124,12 +124,12 @@ test("refresh payload uses REFRESH_TOKEN_AUTH and the refresh token", () => {
 });
 ```
 
-- [ ] **Step 2: Correr y verificar que falla**
+- [x] **Step 2: Correr y verificar que falla**
 
 Run: `npx vitest run src/lib/cognito-auth.test.ts`
 Expected: FAIL — `buildRefreshPayload` no existe.
 
-- [ ] **Step 3: Implementar el builder puro + la llamada**
+- [x] **Step 3: Implementar el builder puro + la llamada**
 
 En `src/lib/cognito-auth.ts`:
 ```ts
@@ -154,12 +154,12 @@ export async function refreshCognitoTokens(refreshToken: string) {
 ```
 (Si el app client tuviera secret, calcular `SECRET_HASH` con el `sub` como username; para el cliente web actual `generateSecret: false`, así que `null`.)
 
-- [ ] **Step 4: Correr y verificar que pasa**
+- [x] **Step 4: Correr y verificar que pasa**
 
 Run: `npx vitest run src/lib/cognito-auth.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/cognito-auth.ts src/lib/cognito-auth.test.ts
@@ -174,7 +174,7 @@ git commit -m "feat(auth): add Cognito REFRESH_TOKEN_AUTH refresh helper"
 - Create: `src/lib/token-refresh.ts`
 - Test: `src/lib/token-refresh.test.ts`
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 `src/lib/token-refresh.test.ts`:
 ```ts
@@ -196,12 +196,12 @@ test("applyRefreshedTokens updates idToken/accessToken/expiry", () => {
 });
 ```
 
-- [ ] **Step 2: Correr y verificar que falla**
+- [x] **Step 2: Correr y verificar que falla**
 
 Run: `npx vitest run src/lib/token-refresh.test.ts`
 Expected: FAIL — módulo no existe.
 
-- [ ] **Step 3: Implementar `token-refresh.ts`**
+- [x] **Step 3: Implementar `token-refresh.ts`**
 
 ```ts
 export type AuthToken = {
@@ -232,12 +232,12 @@ export function applyRefreshedTokens(
 }
 ```
 
-- [ ] **Step 4: Correr y verificar que pasa**
+- [x] **Step 4: Correr y verificar que pasa**
 
 Run: `npx vitest run src/lib/token-refresh.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/token-refresh.ts src/lib/token-refresh.test.ts
@@ -253,7 +253,7 @@ git commit -m "feat(auth): pure token refresh decision and merge helpers"
 - Create: `src/lib/cognito-session.ts`
 - Modify: `src/lib/appsync/invoices.ts`, `src/types/next-auth.d.ts`
 
-- [ ] **Step 1: `jwt` callback con expiración + refresh**
+- [x] **Step 1: `jwt` callback con expiración + refresh**
 
 En `src/auth.ts`, callback `jwt`:
 ```ts
@@ -279,7 +279,7 @@ async jwt({ token, user }) {
 ```
 (Importar `isExpiringSoon`, `applyRefreshedTokens`, `refreshCognitoTokens`. La `authorize` debe devolver `refreshToken` desde el ticket — ajustar el objeto retornado en `src/auth.ts` providers para incluir `refreshToken: ticket.refreshToken`.)
 
-- [ ] **Step 2: `session` callback SIN tokens (solo lo no sensible)**
+- [x] **Step 2: `session` callback SIN tokens (solo lo no sensible)**
 
 ```ts
 session({ session, token }) {
@@ -292,7 +292,7 @@ session({ session, token }) {
 ```
 Quitar `session.accessToken`/`session.idToken`. Actualizar `src/types/next-auth.d.ts` para eliminar esos campos del `Session` y, si se quiere, exponer `error`.
 
-- [ ] **Step 3: Accesor server-only del idToken**
+- [x] **Step 3: Accesor server-only del idToken**
 
 `src/lib/cognito-session.ts`:
 ```ts
@@ -310,7 +310,7 @@ export async function getServerIdToken(): Promise<string | null> {
 }
 ```
 
-- [ ] **Step 4: `appsyncRequest` usa el accesor server-only**
+- [x] **Step 4: `appsyncRequest` usa el accesor server-only**
 
 En `src/lib/appsync/invoices.ts`, reemplazar:
 ```ts
@@ -323,12 +323,12 @@ const idToken = await getServerIdToken();
 ```
 e importar `getServerIdToken`. Quitar el import de `auth` si queda sin uso.
 
-- [ ] **Step 5: Typecheck/lint y build**
+- [x] **Step 5: Typecheck/lint y build**
 
 Run: `npm run lint && npx tsc --noEmit && npm run build`
 Expected: sin errores; el bundle de cliente ya no incluye los tokens en la sesión.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/auth.ts src/lib/cognito-session.ts src/lib/appsync/invoices.ts src/types/next-auth.d.ts
@@ -343,7 +343,7 @@ git commit -m "feat(auth): refresh idToken and keep Cognito tokens out of the cl
 - Modify: `infra/lib/stacks/backend-stack.ts`
 - Test: `infra/test/backend-stack.test.ts`
 
-- [ ] **Step 1: Test que falla — solo auth User Pool**
+- [x] **Step 1: Test que falla — solo auth User Pool**
 
 Agregar a `infra/test/backend-stack.test.ts`:
 ```ts
@@ -355,12 +355,12 @@ test("AppSync API has no additional IAM authorization mode", () => {
 });
 ```
 
-- [ ] **Step 2: Correr y verificar que falla**
+- [x] **Step 2: Correr y verificar que falla**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: FAIL — hoy hay un provider IAM adicional.
 
-- [ ] **Step 3: Quitar el modo IAM**
+- [x] **Step 3: Quitar el modo IAM**
 
 En `backend-stack.ts`, en `authorizationConfig` borrar:
 ```ts
@@ -368,12 +368,12 @@ additionalAuthorizationModes: [{ authorizationType: appsync.AuthorizationType.IA
 ```
 > Verificar que nada dependa de IAM (los resolvers RDS/Dynamo usan el rol del data source, no el modo de auth de la API; el frontend usa el idToken/User Pool).
 
-- [ ] **Step 4: Correr y verificar que pasa**
+- [x] **Step 4: Correr y verificar que pasa**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: PASS y `OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/lib/stacks/backend-stack.ts infra/test/backend-stack.test.ts
@@ -388,11 +388,11 @@ git commit -m "chore(infra): drop unused IAM authorization mode from AppSync"
 - Create: `infra/scripts/backfill-pilot.ts`
 - Modify: `infra/package.json`
 
-- [ ] **Step 1: Instalar el cliente DynamoDB**
+- [x] **Step 1: Instalar el cliente DynamoDB**
 
 Run: `cd infra && npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb`
 
-- [ ] **Step 2: Escribir el script de backfill**
+- [x] **Step 2: Escribir el script de backfill**
 
 `infra/scripts/backfill-pilot.ts`:
 ```ts
@@ -486,16 +486,16 @@ async function main() {
 main();
 ```
 
-- [ ] **Step 3: Añadir script en package.json**
+- [x] **Step 3: Añadir script en package.json**
 
 `"backfill:pilot": "tsx scripts/backfill-pilot.ts"`
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 Run: `cd infra && npx tsc --noEmit`
 Expected: sin errores.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/scripts/backfill-pilot.ts infra/package.json infra/package-lock.json

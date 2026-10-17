@@ -35,18 +35,18 @@
 - Create: `infra/graphql/resolvers/src/ping.ts` (resolver de humo)
 - Modify: `infra/package.json`
 
-- [ ] **Step 1: Instalar esbuild en infra**
+- [x] **Step 1: Instalar esbuild en infra**
 
 Run: `cd infra && npm install -D esbuild`
 Expected: esbuild en `infra/package.json` devDeps.
 
-- [ ] **Step 2: Crear builder stub `src/lib/sql-builders.ts`**
+- [x] **Step 2: Crear builder stub `src/lib/sql-builders.ts`**
 
 ```ts
 export type SqlRequest = { statement: string; params: Record<string, unknown> };
 ```
 
-- [ ] **Step 3: Crear resolver de humo `src/ping.ts`**
+- [x] **Step 3: Crear resolver de humo `src/ping.ts`**
 
 ```ts
 import { sqlPing } from "./lib/sql-builders";
@@ -59,7 +59,7 @@ export function response(ctx: any) {
 ```
 Y añadir a `sql-builders.ts`: `export function sqlPing() { return "ok"; }`
 
-- [ ] **Step 4: Crear `build.mjs`**
+- [x] **Step 4: Crear `build.mjs`**
 
 ```js
 import { build } from "esbuild";
@@ -82,17 +82,17 @@ await build({
 console.log(`bundled ${entries.length} resolvers → ${outDir}`);
 ```
 
-- [ ] **Step 5: Añadir script y correr**
+- [x] **Step 5: Añadir script y correr**
 
 En `infra/package.json` scripts: `"build:resolvers": "node graphql/resolvers/build.mjs"`
 Run: `cd infra && npm run build:resolvers && ls graphql/resolvers/dist/ping.js`
 Expected: `dist/ping.js` existe y NO contiene `import "./lib` (el builder quedó inlined).
 
-- [ ] **Step 6: Ignorar dist en git**
+- [x] **Step 6: Ignorar dist en git**
 
 Añadir `infra/graphql/resolvers/dist` a `.gitignore`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add infra/package.json infra/package-lock.json infra/graphql/resolvers/build.mjs infra/graphql/resolvers/src .gitignore
@@ -107,7 +107,7 @@ git commit -m "build(infra): bundle AppSync resolvers with esbuild and shared SQ
 - Modify: `infra/graphql/resolvers/src/lib/sql-builders.ts`
 - Test: `infra/graphql/resolvers/src/lib/sql-builders.test.ts`
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 `sql-builders.test.ts`:
 ```ts
@@ -153,12 +153,12 @@ test("list/get builders for clients, bank, account scope by account", () => {
 });
 ```
 
-- [ ] **Step 2: Correr para verificar que falla**
+- [x] **Step 2: Correr para verificar que falla**
 
 Run: `cd infra && npx vitest run graphql/resolvers/src/lib/sql-builders.test.ts`
 Expected: FAIL — los builders no existen.
 
-- [ ] **Step 3: Implementar los builders**
+- [x] **Step 3: Implementar los builders**
 
 `sql-builders.ts` (reemplaza el stub, conserva `SqlRequest`):
 ```ts
@@ -240,12 +240,12 @@ export function getAccount(acc: string): SqlRequest {
 ```
 (Eliminar el `sqlPing` stub y `src/ping.ts` ya no es necesario; bórralo.)
 
-- [ ] **Step 4: Correr para verificar que pasa**
+- [x] **Step 4: Correr para verificar que pasa**
 
 Run: `cd infra && npx vitest run graphql/resolvers/src/lib/sql-builders.test.ts`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src/lib
@@ -261,11 +261,11 @@ git commit -m "feat(resolvers): add tenant-scoped SQL builders with isolation un
 - Create: `infra/scripts/apply-migrations-aurora.ts`
 - Modify: `infra/package.json`
 
-- [ ] **Step 1: Instalar el cliente Data API**
+- [x] **Step 1: Instalar el cliente Data API**
 
 Run: `cd infra && npm install @aws-sdk/client-rds-data`
 
-- [ ] **Step 2: Crear el script**
+- [x] **Step 2: Crear el script**
 
 `infra/scripts/apply-migrations-aurora.ts`:
 ```ts
@@ -299,16 +299,16 @@ async function main() {
 main().then(() => console.log("done"));
 ```
 
-- [ ] **Step 3: Añadir script en package.json**
+- [x] **Step 3: Añadir script en package.json**
 
 `"db:migrate:aurora": "tsx scripts/apply-migrations-aurora.ts"`
 
-- [ ] **Step 4: Verificar que compila/typecheck**
+- [x] **Step 4: Verificar que compila/typecheck**
 
 Run: `cd infra && npx tsc --noEmit`
 Expected: sin errores de tipos.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/scripts infra/package.json infra/package-lock.json
@@ -325,7 +325,7 @@ git commit -m "feat(infra): apply Postgres schema to Aurora via Data API"
 - Create: `infra/graphql/resolvers/src/query-list-clients.ts`, `query-get-client.ts`
 - Modify: `infra/lib/stacks/backend-stack.ts`
 
-- [ ] **Step 1: Escribir los resolvers**
+- [x] **Step 1: Escribir los resolvers**
 
 `src/query-list-clients.ts`:
 ```ts
@@ -351,7 +351,7 @@ export function response(ctx: any) {
 
 `src/query-get-client.ts`: idéntico patrón usando `getClient(acc, ctx.args)` y `response` que devuelve `toJsonObject(ctx.result)[0]?.[0] ?? null`.
 
-- [ ] **Step 2: Añadir el RDS data source y conmutar estos dos resolvers en CDK**
+- [x] **Step 2: Añadir el RDS data source y conmutar estos dos resolvers en CDK**
 
 En `backend-stack.ts`, tras crear `dbCluster` (Plan 1):
 ```ts
@@ -359,12 +359,12 @@ const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.se
 ```
 Y reemplazar la creación de `QueryListClientsResolver` y `QueryGetClientResolver` para usar `rdsDs` + `resolverFromFile("../dist/query-list-clients.js")` (apuntando al output bundleado).
 
-- [ ] **Step 3: Bundlear y sintetizar**
+- [x] **Step 3: Bundlear y sintetizar**
 
 Run: `cd infra && npm run build:resolvers && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src infra/lib/stacks/backend-stack.ts
@@ -378,7 +378,7 @@ git commit -m "feat(resolvers): migrate clients read resolvers to Aurora RDS dat
 **Files:**
 - Test: `infra/test/isolation.int.test.ts`
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 Verifica la propiedad de seguridad directamente contra Postgres local, usando los builders como fuente de verdad del SQL:
 ```ts
@@ -431,12 +431,12 @@ test("account A cannot read a nonexistent/other invoice", async () => {
 });
 ```
 
-- [ ] **Step 2: Correr y verificar que pasa**
+- [x] **Step 2: Correr y verificar que pasa**
 
 Run: `docker compose -f docker-compose.test.yml up -d && cd infra && npx vitest run test/isolation.int.test.ts`
 Expected: PASS (3 tests). (El test es verde porque los builders ya scopean por `account_id`; sirve de red de regresión.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/test/isolation.int.test.ts
@@ -451,7 +451,7 @@ git commit -m "test(security): cross-tenant isolation integration tests"
 - Create: `infra/graphql/resolvers/src/query-get-account.ts`, `query-get-bank-account.ts`, `mutation-put-account.ts`, `mutation-put-client.ts`, `mutation-put-bank-account.ts`, `mutation-delete-client.ts`
 - Modify: `backend-stack.ts`
 
-- [ ] **Step 1: Añadir builders de escritura (TDD)**
+- [x] **Step 1: Añadir builders de escritura (TDD)**
 
 Añadir tests a `sql-builders.test.ts`:
 ```ts
@@ -464,7 +464,7 @@ test("putClient injects account_id from claim, not from input", async () => {
 ```
 Run: `cd infra && npx vitest run graphql/resolvers/src/lib/sql-builders.test.ts` → FAIL.
 
-- [ ] **Step 2: Implementar los builders de escritura**
+- [x] **Step 2: Implementar los builders de escritura**
 
 Añadir a `sql-builders.ts`:
 ```ts
@@ -516,16 +516,16 @@ export function putAccount(acc: string, args: { input: any }): SqlRequest {
 ```
 Run el test → PASS.
 
-- [ ] **Step 3: Escribir los resolvers** (patrón de Task 4) para `getAccount`, `getBankAccount`, `putAccount`, `putClient`, `putBankAccount`, `deleteClient`, importando el builder correspondiente. `response` de mutaciones devuelve `toJsonObject(ctx.result)[0]?.[0] ?? null`; `deleteClient` devuelve `true`.
+- [x] **Step 3: Escribir los resolvers** (patrón de Task 4) para `getAccount`, `getBankAccount`, `putAccount`, `putClient`, `putBankAccount`, `deleteClient`, importando el builder correspondiente. `response` de mutaciones devuelve `toJsonObject(ctx.result)[0]?.[0] ?? null`; `deleteClient` devuelve `true`.
 
-- [ ] **Step 4: Conmutar estos resolvers a `rdsDs` en CDK** (reemplazar las creaciones DynamoDB correspondientes por `rdsDs` + `dist/*.js`).
+- [x] **Step 4: Conmutar estos resolvers a `rdsDs` en CDK** (reemplazar las creaciones DynamoDB correspondientes por `rdsDs` + `dist/*.js`).
 
-- [ ] **Step 5: Bundlear, typecheck, synth**
+- [x] **Step 5: Bundlear, typecheck, synth**
 
 Run: `cd infra && npm run build:resolvers && npx tsc --noEmit && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src infra/lib/stacks/backend-stack.ts
@@ -540,7 +540,7 @@ git commit -m "feat(resolvers): migrate accounts, clients and bank-account resol
 - Create: `infra/graphql/resolvers/src/query-list-invoices.ts`, `query-get-invoice.ts`, `query-get-invoice-by-number.ts`, `mutation-put-invoice.ts`, `mutation-update-invoice-status.ts`, `mutation-delete-invoice.ts`, y los de sections/line-items + field resolvers.
 - Modify: `sql-builders.ts` (+ test), `backend-stack.ts`
 
-- [ ] **Step 1: Test del builder de creación con numeración atómica (TDD)**
+- [x] **Step 1: Test del builder de creación con numeración atómica (TDD)**
 
 Añadir a `sql-builders.test.ts`:
 ```ts
@@ -555,7 +555,7 @@ test("putInvoice (create) bumps the per-account counter and inserts atomically",
 ```
 Run → FAIL.
 
-- [ ] **Step 2: Implementar builders de invoices**
+- [x] **Step 2: Implementar builders de invoices**
 
 Añadir a `sql-builders.ts`:
 ```ts
@@ -639,7 +639,7 @@ export function lineItemsBySection(acc: string, source: { sectionId: string }): 
 ```
 Run el test → PASS.
 
-- [ ] **Step 3: Test de integración — numeración e isolation de secciones**
+- [x] **Step 3: Test de integración — numeración e isolation de secciones**
 
 Añadir a `infra/test/isolation.int.test.ts`:
 ```ts
@@ -667,18 +667,18 @@ test("deleteInvoiceSection cannot touch another account's section", async () => 
 ```
 Run: `cd infra && npx vitest run test/isolation.int.test.ts` → PASS.
 
-- [ ] **Step 4: Escribir los resolvers de invoices/sections/line-items + field resolvers**
+- [x] **Step 4: Escribir los resolvers de invoices/sections/line-items + field resolvers**
 
 Patrón de Task 4. Field resolvers `Invoice.sections` y `InvoiceSection.lineItems` usan `sectionsByInvoice(acc, ctx.source)` y `lineItemsBySection(acc, ctx.source)`. `listInvoices.response` devuelve `{ items: rows, nextToken: null }`.
 
-- [ ] **Step 5: Conmutar todos los resolvers de invoices a `rdsDs` en CDK** y retirar sus data sources DynamoDB.
+- [x] **Step 5: Conmutar todos los resolvers de invoices a `rdsDs` en CDK** y retirar sus data sources DynamoDB.
 
-- [ ] **Step 6: Bundlear, typecheck, synth, test**
+- [x] **Step 6: Bundlear, typecheck, synth, test**
 
 Run: `cd infra && npm run build:resolvers && npx tsc --noEmit && npx vitest run && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK` y todos los tests verdes.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src infra/test/isolation.int.test.ts infra/lib/stacks/backend-stack.ts
@@ -692,7 +692,7 @@ git commit -m "feat(resolvers): migrate invoices with atomic numbering, cascade 
 **Files:**
 - Modify: `infra/graphql/schema.graphql`
 
-- [ ] **Step 1: Editar el schema** según el spec:
+- [x] **Step 1: Editar el schema** según el spec:
   - `getAccount(accountId: ID!)` → `getAccount`
   - `listClients(accountId: ID!, …)` → `listClients(limit: Int, nextToken: String)`
   - `getClient(accountId: ID!, clientId: ID!)` → `getClient(clientId: ID!)`
@@ -700,12 +700,12 @@ git commit -m "feat(resolvers): migrate invoices with atomic numbering, cascade 
   - `deleteClient(accountId: ID!, clientId: ID!)` → `deleteClient(clientId: ID!)`
   - Quitar `accountId` de `PutAccountInput`, `PutClientInput`, `PutBankAccountInput`.
 
-- [ ] **Step 2: Sintetizar para validar el schema**
+- [x] **Step 2: Sintetizar para validar el schema**
 
 Run: `cd infra && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK` (AppSync valida que los resolvers referencian campos existentes).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/graphql/schema.graphql
@@ -719,18 +719,18 @@ git commit -m "feat(api): remove client-supplied accountId from GraphQL schema"
 **Files:**
 - Modify: `src/lib/appsync/invoices.ts`
 
-- [ ] **Step 1: Quitar `getNextInvoiceNumber`**
+- [x] **Step 1: Quitar `getNextInvoiceNumber`**
 
 Eliminar la función `getNextInvoiceNumber` (`src/lib/appsync/invoices.ts:373-377`) y sus usos: el número lo asigna el backend en `putInvoice`. Ajustar el formulario/acción de creación para no enviar `invoiceNumber` y leer el devuelto.
 
-- [ ] **Step 2: Quitar `accountId` de variables** en cualquier query/mutation de clients/bank que lo pasara (en este módulo y en `src/lib/company.ts` si aplica).
+- [x] **Step 2: Quitar `accountId` de variables** en cualquier query/mutation de clients/bank que lo pasara (en este módulo y en `src/lib/company.ts` si aplica).
 
-- [ ] **Step 3: Typecheck/lint y build**
+- [x] **Step 3: Typecheck/lint y build**
 
 Run: `npm run lint && npx tsc --noEmit`
 Expected: sin errores.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/appsync/invoices.ts src/lib/company.ts src/actions/invoices.ts
@@ -744,16 +744,16 @@ git commit -m "refactor(web): stop sending accountId; server assigns invoice num
 **Files:**
 - Modify: `infra/lib/stacks/backend-stack.ts`
 
-- [ ] **Step 1: Eliminar del stack** las tablas DynamoDB de dominio (`invoices`, `invoice-sections`, `invoice-line-items`, `invoice-counters`, `accounts`, `clients`, `bank-accounts`) y sus data sources/resolvers viejos. **Conservar** `user-memberships` (futuro) y la futura `audit-log` (Plan 3). El bucket S3 y la Lambda PDF se mantienen.
+- [x] **Step 1: Eliminar del stack** las tablas DynamoDB de dominio (`invoices`, `invoice-sections`, `invoice-line-items`, `invoice-counters`, `accounts`, `clients`, `bank-accounts`) y sus data sources/resolvers viejos. **Conservar** `user-memberships` (futuro) y la futura `audit-log` (Plan 3). El bucket S3 y la Lambda PDF se mantienen.
 
 > ⚠️ Hacerlo **solo tras** confirmar que el backfill (Plan 4) corrió y todos los resolvers leen Postgres. En `prod` las tablas tienen `RETAIN`, así que no se destruyen datos al quitarlas del stack.
 
-- [ ] **Step 2: Synth y assertions CDK**
+- [x] **Step 2: Synth y assertions CDK**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/lib/stacks/backend-stack.ts

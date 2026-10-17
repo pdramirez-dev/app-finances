@@ -30,7 +30,7 @@
 - Create: `vitest.config.ts`
 - Modify: `package.json` (scripts + devDeps)
 
-- [ ] **Step 1: Instalar Vitest y pg**
+- [x] **Step 1: Instalar Vitest y pg**
 
 Run:
 ```bash
@@ -38,7 +38,7 @@ npm install -D vitest @types/pg && npm install pg
 ```
 Expected: se añaden a `package.json`.
 
-- [ ] **Step 2: Crear `vitest.config.ts`**
+- [x] **Step 2: Crear `vitest.config.ts`**
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -53,7 +53,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 3: Añadir script de test en `package.json`**
+- [x] **Step 3: Añadir script de test en `package.json`**
 
 En `"scripts"` agregar:
 ```json
@@ -61,12 +61,12 @@ En `"scripts"` agregar:
 "test:watch": "vitest"
 ```
 
-- [ ] **Step 4: Verificar que Vitest corre (sin tests aún)**
+- [x] **Step 4: Verificar que Vitest corre (sin tests aún)**
 
 Run: `npx vitest run`
 Expected: "No test files found" y exit 0 (o ejecución vacía sin error de config).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json package-lock.json vitest.config.ts
@@ -80,7 +80,7 @@ git commit -m "test: add Vitest harness and pg client"
 **Files:**
 - Create: `docker-compose.test.yml`
 
-- [ ] **Step 1: Crear `docker-compose.test.yml`**
+- [x] **Step 1: Crear `docker-compose.test.yml`**
 
 ```yaml
 services:
@@ -99,12 +99,12 @@ services:
       retries: 15
 ```
 
-- [ ] **Step 2: Levantar y verificar healthcheck**
+- [x] **Step 2: Levantar y verificar healthcheck**
 
 Run: `docker compose -f docker-compose.test.yml up -d && sleep 5 && docker compose -f docker-compose.test.yml ps`
 Expected: el servicio `postgres-test` aparece como `healthy`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docker-compose.test.yml
@@ -120,7 +120,7 @@ git commit -m "test: add ephemeral Postgres for integration tests"
 - Create: `db/migrate.ts`
 - Test: `db/migrate.test.ts`
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 `db/migrate.test.ts`:
 ```ts
@@ -171,12 +171,12 @@ test("running migrations twice is idempotent", async () => {
 });
 ```
 
-- [ ] **Step 2: Correr el test para verque falla**
+- [x] **Step 2: Correr el test para verque falla**
 
 Run: `npx vitest run db/migrate.test.ts`
 Expected: FAIL — no existe `./migrate` (`runMigrations` no definido).
 
-- [ ] **Step 3: Escribir `db/migrations/0001_init.sql`**
+- [x] **Step 3: Escribir `db/migrations/0001_init.sql`**
 
 Pegar el DDL completo del spec (sección "Modelo de datos"), envuelto para idempotencia:
 ```sql
@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS invoice_counters (
 );
 ```
 
-- [ ] **Step 4: Escribir `db/migrate.ts`**
+- [x] **Step 4: Escribir `db/migrate.ts`**
 
 ```ts
 import { readdir, readFile } from "node:fs/promises";
@@ -321,12 +321,12 @@ if (require.main === module) {
 }
 ```
 
-- [ ] **Step 5: Correr el test para verificar que pasa**
+- [x] **Step 5: Correr el test para verificar que pasa**
 
 Run: `docker compose -f docker-compose.test.yml up -d && npx vitest run db/migrate.test.ts`
 Expected: PASS (3 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add db/ docker-compose.test.yml
@@ -341,7 +341,7 @@ git commit -m "feat(db): add initial Postgres schema and idempotent migration ru
 - Modify: `infra/lib/stacks/backend-stack.ts`
 - Test: `infra/test/backend-stack.test.ts`
 
-- [ ] **Step 1: Escribir el test CDK que falla**
+- [x] **Step 1: Escribir el test CDK que falla**
 
 `infra/test/backend-stack.test.ts`:
 ```ts
@@ -371,12 +371,12 @@ test("provisions an Aurora Serverless v2 Postgres cluster with Data API", () => 
 ```
 (Asegúrate de que Vitest también incluya `infra/test`; correr con `cwd` en `infra/` o un `vitest.config.ts` propio en `infra/`.)
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: FAIL — no hay recurso `AWS::RDS::DBCluster` con `EnableHttpEndpoint`.
 
-- [ ] **Step 3: Añadir el cluster Aurora en `backend-stack.ts`**
+- [x] **Step 3: Añadir el cluster Aurora en `backend-stack.ts`**
 
 Importar y crear (cerca de las tablas existentes; el cluster es additive, no se borra nada aún):
 ```ts
@@ -403,17 +403,17 @@ new cdk.CfnOutput(this, "DomainDbClusterArn", { value: dbCluster.clusterArn });
 new cdk.CfnOutput(this, "DomainDbSecretArn", { value: dbCluster.secret!.secretArn });
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Verificar que el stack sintetiza**
+- [x] **Step 5: Verificar que el stack sintetiza**
 
 Run: `cd infra && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK` sin errores.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add infra/lib/stacks/backend-stack.ts infra/test/backend-stack.test.ts infra/package.json
@@ -428,7 +428,7 @@ git commit -m "feat(infra): add Aurora Serverless v2 Postgres cluster with Data 
 - Modify: `infra/lib/stacks/backend-stack.ts:263-281` (definición del `UserPool`)
 - Test: `infra/test/backend-stack.test.ts`
 
-- [ ] **Step 1: Añadir el test que falla**
+- [x] **Step 1: Añadir el test que falla**
 
 Agregar a `infra/test/backend-stack.test.ts`:
 ```ts
@@ -447,12 +447,12 @@ test("user pool defines an immutable custom:accountId attribute", () => {
 ```
 Y añadir `Match` al import: `import { Match, Template } from "aws-cdk-lib/assertions";`
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: FAIL — el UserPool no declara el atributo `accountId`.
 
-- [ ] **Step 3: Añadir `customAttributes` al `UserPool`**
+- [x] **Step 3: Añadir `customAttributes` al `UserPool`**
 
 En la construcción del `new cognito.UserPool(...)`, agregar:
 ```ts
@@ -461,12 +461,12 @@ customAttributes: {
 },
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: PASS (ambos tests CDK).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/lib/stacks/backend-stack.ts infra/test/backend-stack.test.ts
