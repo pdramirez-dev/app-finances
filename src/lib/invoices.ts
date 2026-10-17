@@ -54,3 +54,12 @@ export function formatInvoiceNumber(invoice: { seriesCode?: string | null; invoi
     ? `${invoice.seriesCode}-${String(invoice.invoiceNumber).padStart(4, "0")}`
     : String(invoice.invoiceNumber);
 }
+
+/**
+ * MM/DD/YYYY for date-only values (AWSDate parsed as UTC midnight). Uses the
+ * UTC calendar day so the server, the browser and every timezone agree.
+ */
+export function formatDateOnly(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())}/${date.getUTCFullYear()}`;
+}
