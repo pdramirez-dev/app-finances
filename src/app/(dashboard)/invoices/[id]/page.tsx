@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { getInvoiceById } from "@/lib/appsync/invoices";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
+import { formatInvoiceNumber } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
 
 export default async function InvoiceDetailPage({
@@ -33,13 +34,18 @@ export default async function InvoiceDetailPage({
             <FileText className="size-4" />
             Finanzas · Factura
           </p>
-          <h1 className="brand-heading mt-2 text-3xl text-slate-950">Factura #{invoice.invoiceNumber}</h1>
+          <h1 className="brand-heading mt-2 text-3xl text-slate-950">Factura #{formatInvoiceNumber(invoice)}</h1>
           <p className="mt-1 text-sm text-slate-500">Detalle, estado y formato de impresión</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
             <Link href="/invoices">Volver</Link>
           </Button>
+          {invoice.status !== "PAID" ? (
+            <Button asChild variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+              <Link href={`/invoices/${invoice.invoiceId}/edit`}>Editar</Link>
+            </Button>
+          ) : null}
           <Button asChild className="bg-[#0a1226] text-white hover:bg-[#162448]">
             <Link href={`/invoices/${invoice.invoiceId}/print`} target="_blank">
               Imprimir / PDF

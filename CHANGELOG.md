@@ -6,6 +6,8 @@ Todos los cambios importantes del proyecto se documentan en este archivo.
 
 ### Added
 
+- Numeración de facturas por serie: series con código propio (p. ej. `A-0001`), número inicial configurable, serie predeterminada por cuenta y archivado. Las facturas sin serie conservan la numeración general (migración `0005_invoice_series`).
+- Edición de facturas existentes (`updateInvoiceFull`): reemplaza datos, secciones y conceptos en una sola sentencia atómica, conserva número y estado, bloquea facturas pagadas y queda auditada.
 - Validación central de membresía activa antes de todos los resolvers de dominio.
 - Tipo/query `UserMembership` y roles `OWNER|ADMIN|MEMBER`.
 - Relación tenant-safe entre invoices y clients mediante FK compuesta.

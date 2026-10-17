@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
@@ -72,5 +72,17 @@ END $$;`;
   it("returns empty array for whitespace-only input", () => {
     expect(splitSqlStatements("   \n   ")).toHaveLength(0);
     expect(splitSqlStatements("")).toHaveLength(0);
+  });
+
+  it("splits every migration into statements that start with SQL, not stray comment text", () => {
+    const migrationsDir = join(__dirname, "..", "..", "db", "migrations");
+    for (const file of readdirSync(migrationsDir).filter((name) => name.endsWith(".sql"))) {
+      for (const statement of splitSqlStatements(readFileSync(join(migrationsDir, file), "utf8"))) {
+        const firstCodeLine = statement.split("\n").map((line) => line.trim())
+          .find((line) => line && !line.startsWith("--"));
+        expect(firstCodeLine, `${file}: statement has no SQL`).toBeTruthy();
+        expect(firstCodeLine, `${file}: ${firstCodeLine}`).toMatch(/^(CREATE|ALTER|DO|DROP|INSERT|UPDATE|COMMENT|SELECT)\b/i);
+      }
+    }
   });
 });

@@ -23,6 +23,11 @@ export type InvoiceSectionRecord = {
 export type InvoiceRecord = {
   invoiceId: string;
   invoiceNumber: number;
+  seriesId: string | null;
+  seriesCode: string;
+  /** Bumped by every edit and payment; edits must send the version they started from. */
+  version: number;
+  clientId: string | null;
   date: Date;
   dueDate: Date | null;
   weekNumber: number;
@@ -36,4 +41,14 @@ export type InvoiceRecord = {
   createdAt: Date;
   updatedAt: Date;
   sections: InvoiceSectionRecord[];
+};
+
+export type InvoiceSeries = {
+  seriesId: string;
+  code: string;
+  name: string;
+  lastNumber: number;
+  nextNumber: number;
+  isDefault: boolean;
+  archived: boolean;
 };

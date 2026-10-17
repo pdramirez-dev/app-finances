@@ -209,4 +209,17 @@ describe("summary and workspace search", () => {
     expect(request.statement).toMatch(/ORDER BY[\s\S]*"entityId" DESC LIMIT :lim OFFSET :off/i);
     expect(request.params).toMatchObject({ acc: ACC, term: "%acme%", lim: 5, off: 10 });
   });
+
+  test("workspace search labels and matches invoices by their series number", () => {
+    const request = searchWorkspace(ACC, { query: "A-0012" });
+    expect(request.statement).toMatch(/'Factura #' \|\| \(CASE WHEN series_code = '' THEN invoice_number::text/);
+    expect(request.statement).toMatch(/lpad\(invoice_number::text, GREATEST\(4, length\(invoice_number::text\)\), '0'\) END\) ILIKE :term/);
+  });
 });
+
+test("registerPayment locks the invoice and bumps its version so stale edits are rejected", () => {
+  const request = registerPayment("ACC", { input: { invoiceId: "INV", amount: 5, method: "ACH", reference: "R" } });
+  expect(request.statement).toMatch(/AND upper\(i\.currency\) = upper\(COALESCE\(:currency, i\.currency\)\)\s+FOR UPDATE/);
+  expect(request.statement).toMatch(/UPDATE invoices SET version = version \+ 1 WHERE id IN \(SELECT id FROM target_invoice\)/);
+});
+

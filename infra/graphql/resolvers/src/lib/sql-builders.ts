@@ -2,31 +2,50 @@ export type SqlRequest = { statement: string; params: Record<string, unknown> };
 
 export const DEFAULT_PAGE_SIZE = 25;
 
-export function decodePageToken(token: unknown): number {
+// These helpers are bundled into APPSYNC_JS resolvers: no regex, throw or
+// Number.isInteger. Invalid input comes back as null for the resolver to turn
+// into util.error().
+const DIGITS = "0123456789";
+
+/** Offset encoded in a page token: 0 when absent, null when tampered with. */
+export function decodePageToken(token: unknown): number | null {
   if (token === null || token === undefined || token === "") return 0;
-  const offset = Number(token);
-  if (!Number.isInteger(offset) || offset < 0) throw new Error("Invalid pagination token");
-  return offset;
+  const text = String(token);
+  if (!text.split("").every((char) => DIGITS.indexOf(char) !== -1)) return null;
+  return Number(text);
 }
 
 export function nextPageToken(offset: number, limit: number, rowCount: number): string | null {
   return rowCount < limit ? null : String(offset + limit);
 }
 
-export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string | null {
+const MASK_CHARS = "*xX•";
+const MASK_SEPARATORS = " .-";
+
+/** True when a bank identifier is masked and shows at most `maxVisible` characters. */
+export function isMaskedBankValue(value: unknown, maxVisible = 4): boolean {
+  if (value === null || value === undefined || value === "") return true;
+  const chars = String(value).trim().split("");
+  const hasMask = chars.some((char) => MASK_CHARS.indexOf(char) !== -1);
+  const visible = chars.filter((char) => MASK_CHARS.indexOf(char) === -1 && MASK_SEPARATORS.indexOf(char) === -1);
+  return hasMask && visible.length <= maxVisible;
+}
+
+export function invalidMaskedBankFields(input: Record<string, unknown>): string[] {
+  const invalid: string[] = [];
+  if (!isMaskedBankValue(input.accountNumberMasked)) invalid.push("accountNumberMasked");
+  if (!isMaskedBankValue(input.routingNumberMasked)) invalid.push("routingNumberMasked");
+  if (!isMaskedBankValue(input.ibanMasked, 6)) invalid.push("ibanMasked");
+  return invalid;
+}
+
+export function normalizeMaskedBankValue(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
-  const normalized = String(value).trim();
-  const visible = normalized.replace(/[*xX•\s.-]/g, "");
-
-  if (!/[*xX•]/.test(normalized) || visible.length > maxVisible) {
-    throw new Error("Bank identifiers must be masked and expose only their final characters");
-  }
-
-  return normalized;
+  return String(value).trim();
 }
 
 const INVOICE_COLS =
-  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", version, date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SECTION_COLS =
   `id AS "sectionId", invoice_id AS "invoiceId", title, position, total`;
@@ -60,10 +79,11 @@ export function getInvoice(acc: string, args: { invoiceId: string }): SqlRequest
   };
 }
 
-export function getInvoiceByNumber(acc: string, args: { invoiceNumber: number }): SqlRequest {
+export function getInvoiceByNumber(acc: string, args: { invoiceNumber: number; seriesCode?: string | null }): SqlRequest {
   return {
-    statement: `SELECT ${INVOICE_COLS} FROM invoices WHERE invoice_number = :num AND account_id = :acc`,
-    params: { num: args.invoiceNumber, acc },
+    statement: `SELECT ${INVOICE_COLS} FROM invoices
+      WHERE invoice_number = :num AND series_code = :series AND account_id = :acc`,
+    params: { num: args.invoiceNumber, series: args.seriesCode ?? "", acc },
   };
 }
 
@@ -151,7 +171,7 @@ export function putBankAccount(acc: string, args: { input: any }): SqlRequest {
     params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
               acct: normalizeMaskedBankValue(i.accountNumberMasked),
               rout: normalizeMaskedBankValue(i.routingNumberMasked),
-              iban: normalizeMaskedBankValue(i.ibanMasked, 6),
+              iban: normalizeMaskedBankValue(i.ibanMasked),
               swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
   };
 }
@@ -195,11 +215,10 @@ export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest 
   };
 }
 
-export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest {
-  const i = args.input;
-  // Positions derive from array order so the section/item JSON is self-describing
-  // and the line-item join below can rely on unique section positions.
-  const sections = (i.sections ?? []).map((section: any, sectionIndex: number) => ({
+// Positions derive from array order so the section/item JSON is self-describing
+// and the line-item join can rely on unique section positions.
+function serializeInvoiceSections(sections: any[] | undefined): string {
+  return JSON.stringify((sections ?? []).map((section: any, sectionIndex: number) => ({
     title: section.title,
     position: sectionIndex,
     total: section.total,
@@ -209,31 +228,16 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
       amount: item.amount,
       position: itemIndex,
     })),
-  }));
-  return {
-    statement: `WITH valid_client AS (
-        SELECT CAST(:clientId AS uuid) AS id
-        WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
-          SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
-        )
-      ), n AS (
-        INSERT INTO invoice_counters (account_id, last_invoice_number)
-        SELECT :acc, 1 FROM valid_client
-        ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
-        RETURNING last_invoice_number
-      ), new_invoice AS (
-        INSERT INTO invoices (account_id, client_id, invoice_number, date, due_date, week_number, bill_to_name,
-          bill_to_address, project, currency, notes, grand_total, status)
-        SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
-          :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
-        RETURNING *
-      ), section_input AS (
+  })));
+}
+
+const INVOICE_SECTIONS_INSERT_CTES = (invoiceCte: string) => `section_input AS (
         SELECT s.title, s.position, s.total, s.items
         FROM jsonb_to_recordset(CAST(:sections AS jsonb))
           AS s(title text, position int, total numeric, items jsonb)
       ), new_sections AS (
         INSERT INTO invoice_sections (invoice_id, title, position, total)
-        SELECT ni.id, s.title, s.position, s.total FROM section_input s CROSS JOIN new_invoice ni
+        SELECT ni.id, s.title, s.position, s.total FROM section_input s CROSS JOIN ${invoiceCte} ni
         RETURNING id, position
       ), new_line_items AS (
         INSERT INTO invoice_line_items (section_id, description, quantity, amount, position)
@@ -243,13 +247,145 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
         CROSS JOIN LATERAL jsonb_to_recordset(s.items)
           AS li(description text, quantity numeric, amount numeric, position int)
         RETURNING id
-      )
+      )`;
+
+export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `WITH valid_client AS (
+        SELECT CAST(:clientId AS uuid) AS id
+        WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
+          SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
+        )
+      ), series_bump AS (
+        UPDATE invoice_series s SET last_number = s.last_number + 1, updated_at = now()
+        FROM valid_client
+        WHERE s.id = CAST(:seriesId AS uuid) AND s.account_id = :acc AND s.archived_at IS NULL
+        RETURNING s.id AS series_id, s.code AS series_code, s.last_number AS number
+      ), general_bump AS (
+        INSERT INTO invoice_counters (account_id, last_invoice_number)
+        SELECT :acc, 1 FROM valid_client WHERE CAST(:seriesId AS uuid) IS NULL
+        ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
+        RETURNING CAST(NULL AS uuid) AS series_id, CAST('' AS text) AS series_code, last_invoice_number AS number
+      ), n AS (
+        SELECT * FROM series_bump UNION ALL SELECT * FROM general_bump
+      ), new_invoice AS (
+        INSERT INTO invoices (account_id, client_id, series_id, series_code, invoice_number, date, due_date,
+          week_number, bill_to_name, bill_to_address, project, currency, notes, grand_total, status)
+        SELECT :acc, valid_client.id, n.series_id, n.series_code, n.number, :date, :dueDate, :week, :billName,
+          :billAddr, :project, :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+        RETURNING *
+      ), ${INVOICE_SECTIONS_INSERT_CTES("new_invoice")}
       SELECT ${INVOICE_COLS} FROM new_invoice`,
-    params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
+    params: { acc, clientId: i.clientId ?? null, seriesId: i.seriesId ?? null, date: i.date,
+              dueDate: i.dueDate ?? null, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
               currency: i.currency ?? "USD", notes: i.notes ?? null,
               grandTotal: i.grandTotal, status: i.status ?? "DRAFT",
-              sections: JSON.stringify(sections) },
+              sections: serializeInvoiceSections(i.sections) },
+  };
+}
+
+// Paid invoices are immutable, the new total may not drop below the non-voided
+// payments already registered, and the currency is fixed once payments exist.
+// expectedVersion must match: under READ COMMITTED a second, overlapping edit
+// waits for the row lock and then re-checks the row, sees the bumped version
+// and does nothing, instead of deleting sections from a stale snapshot. Status
+// and invoice number are left untouched
+// (status changes go through updateInvoiceStatus). Old sections are deleted in
+// the same statement, so their line items cascade and the new ones replace them.
+export function updateInvoiceFull(acc: string, args: { invoiceId: string; input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `WITH target AS (
+        SELECT id FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'
+          AND version = :expectedVersion
+          AND (
+            CAST(:currency AS text) IS NULL
+            OR upper(CAST(:currency AS text)) = upper(invoices.currency)
+            OR NOT EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
+            )
+          )
+          AND :grandTotal >= COALESCE((
+            SELECT sum(p.amount) FROM payments p
+            WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
+          ), 0)
+        FOR UPDATE
+      ), valid_client AS (
+        SELECT CAST(:clientId AS uuid) AS id
+        WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
+          SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
+        )
+      ), updated_invoice AS (
+        UPDATE invoices inv SET client_id = valid_client.id, date = :date, due_date = :dueDate,
+          week_number = :week, bill_to_name = :billName, bill_to_address = :billAddr, project = :project,
+          currency = COALESCE(CAST(:currency AS text), inv.currency), notes = :notes,
+          grand_total = :grandTotal, version = inv.version + 1, updated_at = now()
+        FROM target CROSS JOIN valid_client
+        WHERE inv.id = target.id
+        RETURNING inv.*
+      ), removed_sections AS (
+        DELETE FROM invoice_sections WHERE invoice_id IN (SELECT id FROM updated_invoice)
+        RETURNING id
+      ), ${INVOICE_SECTIONS_INSERT_CTES("updated_invoice")}
+      SELECT ${INVOICE_COLS} FROM updated_invoice`,
+    params: { acc, invoiceId: args.invoiceId, clientId: i.clientId ?? null, date: i.date,
+              dueDate: i.dueDate ?? null, week: i.weekNumber, billName: i.billToName,
+              billAddr: i.billToAddress, project: i.project, currency: i.currency ?? null,
+              notes: i.notes ?? null, grandTotal: i.grandTotal, expectedVersion: i.expectedVersion,
+              sections: serializeInvoiceSections(i.sections) },
+  };
+}
+
+const INVOICE_SERIES_COLS =
+  `s.id AS "seriesId", s.account_id AS "accountId", s.code, s.name, s.last_number AS "lastNumber", s.last_number + 1 AS "nextNumber", (s.archived_at IS NOT NULL) AS archived, s.created_at AS "createdAt", s.updated_at AS "updatedAt"`;
+
+export function listInvoiceSeries(acc: string, _args: unknown): SqlRequest {
+  return {
+    statement: `SELECT ${INVOICE_SERIES_COLS}, COALESCE(a.default_invoice_series_id = s.id, false) AS "isDefault"
+      FROM invoice_series s LEFT JOIN accounts a ON a.id = s.account_id
+      WHERE s.account_id = :acc
+      ORDER BY s.archived_at IS NOT NULL, s.code`,
+    params: { acc },
+  };
+}
+
+// Creates a series (code and starting number are fixed at creation) or updates
+// its name and archived flag. isDefault is the desired state: true makes it the
+// account default, false clears it only if it currently is the default, and an
+// archived series can never stay the default.
+export function putInvoiceSeries(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  const seriesId = i.seriesId ?? null;
+  return {
+    statement: `WITH new_series AS (
+        INSERT INTO invoice_series (account_id, code, name, last_number)
+        SELECT :acc, :code, :name, :lastNumber WHERE CAST(:seriesId AS uuid) IS NULL
+        RETURNING *
+      ), updated_series AS (
+        UPDATE invoice_series SET name = :name,
+          archived_at = CASE WHEN :archived THEN COALESCE(archived_at, now()) ELSE NULL END,
+          updated_at = now()
+        WHERE id = CAST(:seriesId AS uuid) AND account_id = :acc
+        RETURNING *
+      ), s AS (
+        SELECT * FROM new_series UNION ALL SELECT * FROM updated_series
+      ), default_update AS (
+        UPDATE accounts a SET default_invoice_series_id = CASE
+            WHEN :isDefault AND s.archived_at IS NULL THEN s.id
+            WHEN a.default_invoice_series_id = s.id THEN NULL
+            ELSE a.default_invoice_series_id
+          END
+        FROM s WHERE a.id = :acc
+        RETURNING a.default_invoice_series_id
+      )
+      SELECT ${INVOICE_SERIES_COLS}, COALESCE(d.default_invoice_series_id = s.id, false) AS "isDefault"
+      FROM s LEFT JOIN default_update d ON true`,
+    params: { acc, seriesId, code: seriesId ? null : i.code, name: i.name,
+              lastNumber: seriesId ? 0 : Math.max((i.startNumber ?? 1) - 1, 0),
+              isDefault: i.isDefault ?? false, archived: i.archived ?? false },
   };
 }
 

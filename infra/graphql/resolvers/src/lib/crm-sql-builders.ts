@@ -364,10 +364,17 @@ export function listPayments(acc: string, args: Args): SqlRequest {
 export function registerPayment(acc: string, args: Args): SqlRequest {
   const i = args.input;
   return {
+    // Locking the invoice serializes payments with invoice edits: a payment that
+    // waits behind a currency change re-checks the new currency, and bumping the
+    // version makes any edit opened before this payment stale.
     statement: `WITH target_invoice AS (
       SELECT i.id, i.currency FROM invoices i
       WHERE i.account_id = :acc AND i.id = :invoiceId
         AND upper(i.currency) = upper(COALESCE(:currency, i.currency))
+      FOR UPDATE
+    ), bumped AS (
+      UPDATE invoices SET version = version + 1 WHERE id IN (SELECT id FROM target_invoice)
+      RETURNING id
     ), saved AS (
       INSERT INTO payments (account_id, invoice_id, bank_account_id, amount, currency, method,
         status, received_at, reference, notes, updated_at)
@@ -592,6 +599,13 @@ export function getCrmSummary(acc: string): SqlRequest {
   };
 }
 
+
+// Same format as formatInvoiceNumber in the web app: "12" for the general
+// numbering, "A-0012" for a series (padded to 4 digits, never truncated).
+const INVOICE_NUMBER_LABEL =
+  `(CASE WHEN series_code = '' THEN invoice_number::text
+    ELSE series_code || '-' || lpad(invoice_number::text, GREATEST(4, length(invoice_number::text)), '0') END)`;
+
 export function searchWorkspace(acc: string, args: Args): SqlRequest {
   const term = `%${String(args.query ?? "").trim()}%`;
   return {
@@ -602,7 +616,7 @@ export function searchWorkspace(acc: string, args: Args): SqlRequest {
       UNION ALL SELECT 'PROJECT', id, name, status::text, updated_at FROM projects WHERE account_id = :acc AND name ILIKE :term
       UNION ALL SELECT 'TASK', id, title, status::text, updated_at FROM crm_tasks WHERE account_id = :acc AND title ILIKE :term
       UNION ALL SELECT 'CALENDAR_EVENT', id, title, event_type::text, updated_at FROM calendar_events WHERE account_id = :acc AND title ILIKE :term
-      UNION ALL SELECT 'INVOICE', id, 'Factura #' || invoice_number, bill_to_name, updated_at FROM invoices WHERE account_id = :acc AND (bill_to_name ILIKE :term OR project ILIKE :term OR invoice_number::text ILIKE :term)
+      UNION ALL SELECT 'INVOICE', id, 'Factura #' || ${INVOICE_NUMBER_LABEL}, bill_to_name, updated_at FROM invoices WHERE account_id = :acc AND (bill_to_name ILIKE :term OR project ILIKE :term OR ${INVOICE_NUMBER_LABEL} ILIKE :term)
       UNION ALL SELECT 'PAYMENT', id, reference, status::text, updated_at FROM payments WHERE account_id = :acc AND reference ILIKE :term
     ) results ORDER BY updated_at DESC, "entityId" DESC LIMIT :lim OFFSET :off`,
     params: { acc, term, ...page(args) },

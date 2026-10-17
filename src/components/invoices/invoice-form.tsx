@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import Link from "next/link";
+import { useActionState, useMemo, useState, useSyncExternalStore } from "react";
 import { Trash2 } from "lucide-react";
 
 import { createInvoiceAction, type CreateInvoiceActionState } from "@/actions/invoices";
+import type { InvoiceRecord, InvoiceSeries } from "@/lib/invoice-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { defaultSectionTemplate } from "@/lib/company";
 import type { Client } from "@/lib/appsync/workspace";
-import { formatMoney, toDateInputValue } from "@/lib/invoices";
+import { formatInvoiceNumber, formatMoney, toDateInputValue, toLocalDateInputValue } from "@/lib/invoices";
 
 type EditableItem = {
   description: string;
@@ -35,31 +37,75 @@ function newItem(): EditableItem {
   };
 }
 
+function subscribeToNothing() {
+  return () => {};
+}
+
+function localToday() {
+  return toLocalDateInputValue(new Date());
+}
+
+function addDaysToDateInput(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  return toLocalDateInputValue(new Date(year, month - 1, day + days));
+}
+
 function parseNumeric(value: string) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
-  const [state, formAction, isPending] = useActionState(createInvoiceAction, initialState);
-  const [defaultDates] = useState(() => {
-    const issueDate = new Date();
-    const dueDate = new Date(issueDate);
-    dueDate.setDate(dueDate.getDate() + 30);
-    return {
-      issueDate: toDateInputValue(issueDate),
-      dueDate: toDateInputValue(dueDate),
-    };
-  });
-  const [sections, setSections] = useState<EditableSection[]>(
-    defaultSectionTemplate.map((section) => ({
-      title: section.title,
-      items: section.items.map((item) => ({
-        description: item.description,
-        quantity: String(item.quantity),
-        amount: String(item.amount),
-      })),
+type InvoiceFormAction = (
+  state: CreateInvoiceActionState,
+  formData: FormData,
+) => Promise<CreateInvoiceActionState>;
+
+function sectionsFromInvoice(invoice: InvoiceRecord): EditableSection[] {
+  return invoice.sections.map((section) => ({
+    title: section.title,
+    items: section.lineItems.map((item) => ({
+      description: item.description,
+      quantity: String(item.quantity),
+      amount: String(item.amount),
     })),
+  }));
+}
+
+export function InvoiceForm({
+  clients = [],
+  series = [],
+  invoice,
+  action = createInvoiceAction,
+}: {
+  clients?: Client[];
+  series?: InvoiceSeries[];
+  invoice?: InvoiceRecord;
+  action?: InvoiceFormAction;
+}) {
+  const activeSeries = series.filter((item) => !item.archived);
+  const defaultSeriesId = activeSeries.find((item) => item.isDefault)?.seriesId ?? "";
+  const isEditing = Boolean(invoice);
+  const [state, formAction, isPending] = useActionState(action, initialState);
+  // New invoices default to "today" in the viewer's timezone, which the server
+  // cannot know: the server snapshot is empty and the client fills it in.
+  const today = useSyncExternalStore(subscribeToNothing, localToday, () => "");
+  const defaultDates = invoice
+    ? {
+        issueDate: toDateInputValue(invoice.date),
+        dueDate: invoice.dueDate ? toDateInputValue(invoice.dueDate) : "",
+      }
+    : { issueDate: today, dueDate: today ? addDaysToDateInput(today, 30) : "" };
+  const [sections, setSections] = useState<EditableSection[]>(() =>
+    invoice && invoice.sections.length > 0
+      ? sectionsFromInvoice(invoice)
+      : defaultSectionTemplate.map((section) => ({
+          title: section.title,
+          items: section.items.map((item) => ({
+            description: item.description,
+            quantity: String(item.quantity),
+            amount: String(item.amount),
+          })),
+        })),
   );
 
   const sectionsPayload = useMemo(
@@ -156,6 +202,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
   return (
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="sections" value={JSON.stringify(sectionsPayload)} />
+      {invoice ? <input type="hidden" name="expectedVersion" value={invoice.version} /> : null}
 
       <Card className="brand-surface">
         <CardHeader>
@@ -164,39 +211,63 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="clientId">Cliente guardado</Label>
-            <select id="clientId" name="clientId" className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+            <select id="clientId" name="clientId" defaultValue={invoice?.clientId ?? ""} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
               <option value="">Sin cliente vinculado</option>
               {clients.map((client) => <option key={client.clientId} value={client.clientId}>{client.name}</option>)}
             </select>
             <p className="text-xs text-slate-500">Vincula la factura al cliente dentro de la cuenta activa.</p>
           </div>
+          {invoice ? (
+            <div className="space-y-2 md:col-span-2">
+              <Label>Numeración</Label>
+              <p className="text-sm text-slate-700">
+                {invoice.seriesCode ? `Serie ${invoice.seriesCode}` : "Numeración general"} · Factura #{formatInvoiceNumber(invoice)}
+              </p>
+              <p className="text-xs text-slate-500">La serie y el número no cambian al editar.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="seriesId">Serie de numeración</Label>
+              <select id="seriesId" name="seriesId" defaultValue={defaultSeriesId} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+                <option value="">Numeración general</option>
+                {activeSeries.map((item) => (
+                  <option key={item.seriesId} value={item.seriesId}>
+                    {item.code} · {item.name} (siguiente {formatInvoiceNumber({ seriesCode: item.code, invoiceNumber: item.nextNumber })})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                Gestiona las series en <Link href="/settings/invoice-series" className="font-medium text-cyan-700 hover:underline">Configuración · Series de facturación</Link>.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="weekNumber">Número de semana</Label>
-            <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} required />
+            <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} defaultValue={invoice?.weekNumber} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="date">Fecha</Label>
-            <Input id="date" name="date" type="date" defaultValue={defaultDates.issueDate} required />
+            <Input key={defaultDates.issueDate} id="date" name="date" type="date" defaultValue={defaultDates.issueDate} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="dueDate">Fecha de vencimiento</Label>
-            <Input id="dueDate" name="dueDate" type="date" defaultValue={defaultDates.dueDate} required />
+            <Input key={defaultDates.dueDate} id="dueDate" name="dueDate" type="date" defaultValue={defaultDates.dueDate} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="project">Proyecto</Label>
-            <Input id="project" name="project" placeholder="Mantenimiento regional" required />
+            <Input id="project" name="project" placeholder="Mantenimiento regional" defaultValue={invoice?.project} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="billToName">Facturar a</Label>
-            <Input id="billToName" name="billToName" placeholder="Nombre de la empresa" required />
+            <Input id="billToName" name="billToName" placeholder="Nombre de la empresa" defaultValue={invoice?.billToName} required />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="billToAddress">Dirección de facturación</Label>
-            <Textarea id="billToAddress" name="billToAddress" rows={3} required />
+            <Textarea id="billToAddress" name="billToAddress" rows={3} defaultValue={invoice?.billToAddress} required />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="notes">Notas (opcional)</Label>
-            <Textarea id="notes" name="notes" rows={3} />
+            <Textarea id="notes" name="notes" rows={3} defaultValue={invoice?.notes ?? ""} />
           </div>
         </CardContent>
       </Card>
@@ -318,14 +389,18 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
 
           {state.error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-sm font-medium text-red-700">No se pudo crear el invoice</p>
+              <p className="text-sm font-medium text-red-700">
+                {isEditing ? "No se pudo guardar la factura" : "No se pudo crear la factura"}
+              </p>
               <p className="mt-1 text-sm text-red-600">{state.error}</p>
             </div>
           ) : null}
 
           <div className="flex justify-end">
             <Button type="submit" className="bg-[#0a1226] text-white hover:bg-[#162448]" disabled={isPending}>
-              {isPending ? "Creando…" : "Crear factura"}
+              {isEditing
+                ? isPending ? "Guardando…" : "Guardar cambios"
+                : isPending ? "Creando…" : "Crear factura"}
             </Button>
           </div>
         </CardContent>

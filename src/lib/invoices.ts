@@ -36,6 +36,30 @@ export function formatMoneyParts(amount: number, currency = "USD") {
   return { symbol, value };
 }
 
+// For dates parsed from AWSDate strings (UTC midnight): keeps the stored day.
 export function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+// For "today"-style defaults: the calendar day in the viewer's own timezone.
+export function toLocalDateInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Mirrors INVOICE_NUMBER_LABEL in the resolvers: the general numbering stays a
+// plain number, series numbers are "CODE-0001" (padded, never truncated).
+export function formatInvoiceNumber(invoice: { seriesCode?: string | null; invoiceNumber: number }) {
+  return invoice.seriesCode
+    ? `${invoice.seriesCode}-${String(invoice.invoiceNumber).padStart(4, "0")}`
+    : String(invoice.invoiceNumber);
+}
+
+/**
+ * MM/DD/YYYY for date-only values (AWSDate parsed as UTC midnight). Uses the
+ * UTC calendar day so the server, the browser and every timezone agree.
+ */
+export function formatDateOnly(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())}/${date.getUTCFullYear()}`;
 }
