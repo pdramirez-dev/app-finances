@@ -3,7 +3,7 @@ import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
 import {
   listClients, getClient, getInvoice,
-  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, getReminderSettings, putReminderSettings, dueReminders, claimScheduledReminder, logManualReminder, completeReminder, listInvoiceReminders, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
@@ -38,7 +38,7 @@ beforeAll(async () => {
   await runMigrations(URL);
   db = new Client({ connectionString: URL });
   await db.connect();
-  await db.query("DELETE FROM payments; DELETE FROM bank_accounts; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; UPDATE accounts SET default_invoice_series_id = NULL; DELETE FROM invoice_series; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
+  await db.query("DELETE FROM invoice_reminders; DELETE FROM payments; DELETE FROM bank_accounts; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; UPDATE accounts SET default_invoice_series_id = NULL; DELETE FROM invoice_series; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
   await db.query("INSERT INTO accounts (id, type, display_name) VALUES ('11111111-1111-1111-1111-111111111111','COMPANY','A'),('22222222-2222-2222-2222-222222222222','COMPANY','B')");
   await db.query("INSERT INTO clients (id, account_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','Cliente A'),('bbbbbbbb-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','Cliente B')");
   await db.query(`INSERT INTO invoices (id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, grand_total) VALUES ('cccccccc-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','bbbbbbbb-0000-0000-0000-000000000001',1,'2024-01-01',1,'Cliente B','123 B Street','Project B',1000.00)`);
@@ -381,4 +381,123 @@ dbTest("markInvoiceSent moves a draft once and never touches other accounts", as
   expect(await run(markInvoiceSent(ACC_B, { invoiceId: created.invoiceId }))).toHaveLength(0);
   expect(await run(markInvoiceSent(ACC_A, { invoiceId: created.invoiceId }))).toEqual([{ invoiceId: created.invoiceId, status: "SENT" }]);
   expect(await run(markInvoiceSent(ACC_A, { invoiceId: created.invoiceId }))).toHaveLength(0);
+});
+
+// --- Payment reminders -------------------------------------------------------
+
+const sentInvoiceDue = async (dueDate: string, grandTotal = 100) => {
+  const created = (await run(createInvoiceFull(ACC_A, { input: {
+    clientId: "aaaaaaaa-0000-0000-0000-000000000001", date: "2026-01-15", dueDate, weekNumber: 3,
+    billToName: "Recordatorio", billToAddress: "Addr", project: "P", grandTotal,
+    sections: [{ title: "S", total: grandTotal, lineItems: [{ description: "d", quantity: 1, amount: grandTotal }] }],
+  } } as any)))[0];
+  await db.query("UPDATE invoices SET status = 'SENT' WHERE id = $1", [created.invoiceId]);
+  return created.invoiceId as string;
+};
+
+const due = async (invoiceIds: string[], today: string, minGapSince = "2999-01-01T00:00:00Z") =>
+  (await run(dueReminders({ today, windowDays: 3, minGapSince, limit: 500 })))
+    .filter((row) => invoiceIds.includes(row.invoiceId));
+
+const enableRemindersSince = async (enabledAt: string) => {
+  await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [-3, 0, 7, 14] } }));
+  await db.query("UPDATE accounts SET reminders_enabled_at = $2 WHERE id = $1", [ACC_A, enabledAt]);
+};
+
+dbTest("reminder settings default off, round-trip offsets as text and stamp the opt-in time once", async () => {
+  await db.query("UPDATE clients SET email = 'cuentas@cliente-a.example' WHERE id = 'aaaaaaaa-0000-0000-0000-000000000001'");
+  const [initial] = await run(getReminderSettings(ACC_A, {}));
+  expect(initial).toMatchObject({ enabled: false, enabledAt: null, offsetsCsv: "-3,0,7,14" });
+
+  const [on] = await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [10, 0, 5] } }));
+  expect(on).toMatchObject({ enabled: true, offsetsCsv: "0,5,10" });
+  const [again] = await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [0] } }));
+  expect(again.enabledAt).toEqual(on.enabledAt);
+  const [off] = await run(putReminderSettings(ACC_A, { input: { enabled: false, offsets: [0] } }));
+  expect(off).toMatchObject({ enabled: false, enabledAt: null });
+
+  await expect(run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [120] } }))).rejects.toThrow(/reminder_offsets_valid/);
+});
+
+dbTest("dueReminders picks the latest reached offset inside the window, only for opted-in accounts", async () => {
+  const invoiceId = await sentInvoiceDue("2026-02-10");
+  await run(putReminderSettings(ACC_A, { input: { enabled: false, offsets: [-3, 0, 7, 14] } }));
+  expect(await due([invoiceId], "2026-02-10")).toEqual([]);
+
+  await enableRemindersSince("2026-01-01T00:00:00Z");
+  const pick = async (today: string) => (await due([invoiceId], today)).map((row) => [row.offsetDays, row.scheduledFor]);
+  expect(await pick("2026-02-06")).toEqual([]);
+  expect(await pick("2026-02-07")).toEqual([[-3, "2026-02-07"]]);
+  expect(await pick("2026-02-10")).toEqual([[0, "2026-02-10"]]);
+  expect(await pick("2026-02-19")).toEqual([[7, "2026-02-17"]]);
+  expect(await pick("2026-02-20")).toEqual([]); // 02-17 fell out of the 3-day window
+  expect(await pick("2026-03-30")).toEqual([]);
+  const [row] = await due([invoiceId], "2026-02-10");
+  expect(row).toMatchObject({ accountId: ACC_A, recipient: "cuentas@cliente-a.example" });
+});
+
+dbTest("dueReminders never reminds dates before the opt-in, paid balances, or right after another reminder", async () => {
+  const invoiceId = await sentInvoiceDue("2026-02-10", 100);
+  await enableRemindersSince("2026-02-15T12:00:00Z");
+  expect(await due([invoiceId], "2026-02-12")).toEqual([]); // offset 0 (02-10) predates the opt-in
+  expect((await due([invoiceId], "2026-02-17")).map((row) => row.offsetDays)).toEqual([7]);
+
+  await db.query(
+    "INSERT INTO payments (account_id, invoice_id, amount, method, reference) VALUES ($1, $2, 40, 'ACH', $3)",
+    [ACC_A, invoiceId, `REM-${invoiceId}`],
+  );
+  expect((await due([invoiceId], "2026-02-17")).map((row) => row.offsetDays)).toEqual([7]); // partially paid
+  await db.query(
+    "INSERT INTO payments (account_id, invoice_id, amount, method, reference) VALUES ($1, $2, 60, 'CASH', $3)",
+    [ACC_A, invoiceId, `REM2-${invoiceId}`],
+  );
+  expect(await due([invoiceId], "2026-02-17")).toEqual([]); // unreconciled payments still settle it
+
+  const other = await sentInvoiceDue("2026-02-10");
+  await run(logManualReminder(ACC_A, { invoiceId: other, recipient: "x@y.co" }));
+  expect(await due([other], "2026-02-17", "2000-01-01T00:00:00Z")).toEqual([]); // min gap after any reminder
+  expect((await due([other], "2026-02-17")).map((row) => row.offsetDays)).toEqual([7]);
+});
+
+dbTest("a scheduled reminder is claimed by exactly one of two racing workers", async () => {
+  const invoiceId = await sentInvoiceDue("2026-02-10");
+  const second = new Client({ connectionString: URL });
+  await second.connect();
+  try {
+    const claim = claimScheduledReminder(ACC_A, { invoiceId, offsetDays: 0, scheduledFor: "2026-02-10", recipient: "a@b.co" });
+    const names = Object.keys(claim.params);
+    const text = claim.statement.replace(/:([a-zA-Z_]+)/g, (_, n) => `$${names.indexOf(n) + 1}`);
+    const values = names.map((n) => claim.params[n]);
+    const [a, b] = await Promise.all([db.query(text, values), second.query(text, values)]);
+    expect(a.rows.length + b.rows.length).toBe(1);
+  } finally {
+    await second.end();
+  }
+  await enableRemindersSince("2026-01-01T00:00:00Z");
+  expect(await due([invoiceId], "2026-02-10")).toEqual([]); // the claimed offset is never picked again
+});
+
+dbTest("reminder claims, completions and history stay inside the caller's account", async () => {
+  const invoiceId = await sentInvoiceDue("2026-02-10");
+  expect(await run(claimScheduledReminder(ACC_B, { invoiceId, offsetDays: 7, scheduledFor: "2026-02-17", recipient: "a@b.co" }))).toEqual([]);
+  expect(await run(logManualReminder(ACC_B, { invoiceId, recipient: "a@b.co" }))).toEqual([]);
+
+  const [claimed] = await run(claimScheduledReminder(ACC_A, { invoiceId, offsetDays: 7, scheduledFor: "2026-02-17", recipient: "a@b.co" }));
+  expect(await run(completeReminder(ACC_B, { reminderId: claimed.reminderId, sent: true }))).toEqual([]);
+  expect(await run(completeReminder(ACC_A, { reminderId: claimed.reminderId, sent: false, error: "SES down" })))
+    .toEqual([{ reminderId: claimed.reminderId, status: "FAILED" }]);
+
+  const history = await run(listInvoiceReminders(ACC_A, { invoiceId }));
+  expect(history.map((row) => [row.kind, row.offsetDays, row.status])).toEqual([["SCHEDULED", 7, "FAILED"]]);
+  expect(await run(listInvoiceReminders(ACC_B, { invoiceId }))).toEqual([]);
+});
+
+dbTest("invoiceDocument reports the balance due after non-voided payments", async () => {
+  const invoiceId = await sentInvoiceDue("2026-02-10", 100);
+  await db.query(
+    "INSERT INTO payments (account_id, invoice_id, amount, method, reference) VALUES ($1, $2, 30, 'ACH', $3)",
+    [ACC_A, invoiceId, `BAL-${invoiceId}`],
+  );
+  const [doc] = await run(invoiceDocument(ACC_A, { invoiceId }));
+  expect(Number(doc.balanceDue)).toBe(70);
 });

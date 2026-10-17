@@ -3,6 +3,7 @@ import { requiresAdminRole } from "./permissions";
 
 test.each([
   "putInvoiceSeries",
+  "putReminderSettings",
   "deleteContact",
   "deleteOpportunity",
   "deleteProject",

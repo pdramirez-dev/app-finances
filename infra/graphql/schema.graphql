@@ -118,6 +118,8 @@ type Query {
   getInvoice(invoiceId: ID!): Invoice
   getInvoiceByNumber(invoiceNumber: Int!, seriesCode: String): Invoice
   listInvoiceSeries: [InvoiceSeries!]!
+  getReminderSettings: ReminderSettings!
+  listInvoiceReminders(invoiceId: ID!): [InvoiceReminder!]!
   listInvoices(status: InvoiceStatus, limit: Int, nextToken: String): InvoiceConnection!
   getAccount: Account
   listClients(limit: Int, nextToken: String): ClientConnection!
@@ -148,6 +150,8 @@ type Mutation {
   updateInvoiceFull(invoiceId: ID!, input: UpdateInvoiceFullInput!): Invoice!
   putInvoiceSeries(input: PutInvoiceSeriesInput!): InvoiceSeries!
   sendInvoiceEmail(input: SendInvoiceEmailInput!): InvoiceEmailResult!
+  sendPaymentReminder(input: SendInvoiceEmailInput!): InvoiceEmailResult!
+  putReminderSettings(input: PutReminderSettingsInput!): ReminderSettings!
   putInvoiceSection(input: PutInvoiceSectionInput!): InvoiceSection!
   putInvoiceLineItem(input: PutInvoiceLineItemInput!): InvoiceLineItem!
   deleteInvoiceSection(invoiceId: ID!, sectionId: ID!): Boolean!
@@ -282,6 +286,25 @@ type InvoiceLineItem {
   quantity: Float!
   amount: Float!
   position: Int!
+}
+
+type ReminderSettings {
+  accountId: ID!
+  enabled: Boolean!
+  enabledAt: AWSDateTime
+  offsets: [Int!]!
+}
+
+type InvoiceReminder {
+  reminderId: ID!
+  invoiceId: ID!
+  kind: String!
+  offsetDays: Int
+  scheduledFor: AWSDate
+  recipient: String!
+  status: String!
+  createdAt: AWSDateTime!
+  sentAt: AWSDateTime
 }
 
 type InvoiceEmailResult {
@@ -557,6 +580,11 @@ input CreateInvoiceFullInput {
   grandTotal: Float!
   status: InvoiceStatus
   sections: [CreateInvoiceFullSectionInput!]!
+}
+
+input PutReminderSettingsInput {
+  enabled: Boolean!
+  offsets: [Int!]!
 }
 
 input SendInvoiceEmailInput {

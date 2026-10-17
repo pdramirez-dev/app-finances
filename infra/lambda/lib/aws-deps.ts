@@ -9,7 +9,7 @@ import type { DownloadInvoiceDeps } from "../download-invoice";
 import type { SendInvoiceEmailDeps } from "../send-invoice-email";
 
 // Parameters compared against uuid columns need an explicit hint over the Data API.
-const UUID_PARAMS = new Set(["acc", "invoiceId"]);
+const UUID_PARAMS = new Set(["acc", "invoiceId", "reminderId"]);
 
 export function toSqlParameters(params: Record<string, unknown>): SqlParameter[] {
   return Object.entries(params).map(([name, value]): SqlParameter => {

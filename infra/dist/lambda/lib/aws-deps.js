@@ -9,7 +9,7 @@ const client_secrets_manager_1 = require("@aws-sdk/client-secrets-manager");
 const client_sesv2_1 = require("@aws-sdk/client-sesv2");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 // Parameters compared against uuid columns need an explicit hint over the Data API.
-const UUID_PARAMS = new Set(["acc", "invoiceId"]);
+const UUID_PARAMS = new Set(["acc", "invoiceId", "reminderId"]);
 function toSqlParameters(params) {
     return Object.entries(params).map(([name, value]) => {
         const typeHint = UUID_PARAMS.has(name) ? "UUID" : undefined;

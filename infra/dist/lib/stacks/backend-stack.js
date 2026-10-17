@@ -41,6 +41,8 @@ const cloudwatch = __importStar(require("aws-cdk-lib/aws-cloudwatch"));
 const cognito = __importStar(require("aws-cdk-lib/aws-cognito"));
 const dynamodb = __importStar(require("aws-cdk-lib/aws-dynamodb"));
 const ec2 = __importStar(require("aws-cdk-lib/aws-ec2"));
+const events = __importStar(require("aws-cdk-lib/aws-events"));
+const eventsTargets = __importStar(require("aws-cdk-lib/aws-events-targets"));
 const iam = __importStar(require("aws-cdk-lib/aws-iam"));
 const lambda = __importStar(require("aws-cdk-lib/aws-lambda"));
 const rds = __importStar(require("aws-cdk-lib/aws-rds"));
@@ -310,6 +312,8 @@ class AppNexoBackendStack extends cdk.Stack {
         securedRdsResolver("QueryGetInvoiceByNumber", "Query", "getInvoiceByNumber", "query-get-invoice-by-number");
         securedRdsResolver("QueryListInvoices", "Query", "listInvoices", "query-list-invoices");
         securedRdsResolver("QueryListInvoiceSeries", "Query", "listInvoiceSeries", "query-list-invoice-series");
+        securedRdsResolver("QueryGetReminderSettings", "Query", "getReminderSettings", "query-get-reminder-settings");
+        securedRdsResolver("QueryListInvoiceReminders", "Query", "listInvoiceReminders", "query-list-invoice-reminders");
         securedRdsResolver("QueryGetAccount", "Query", "getAccount", "query-get-account");
         securedRdsResolver("QueryListClients", "Query", "listClients", "query-list-clients");
         securedRdsResolver("QueryGetClient", "Query", "getClient", "query-get-client");
@@ -491,6 +495,30 @@ class AppNexoBackendStack extends cdk.Stack {
         invoicePdfsBucket.grantRead(downloadInvoiceFn, "accounts/*");
         invoiceLinkSecret.grantRead(downloadInvoiceFn);
         const downloadInvoiceUrl = downloadInvoiceFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+        const invoiceDeliveryEnvironment = {
+            INVOICE_PDFS_BUCKET_NAME: invoicePdfsBucket.bucketName,
+            INVOICE_LINK_SECRET_ARN: invoiceLinkSecret.secretArn,
+            INVOICE_DOWNLOAD_BASE_URL: downloadInvoiceUrl.url,
+            INVOICE_EMAIL_FROM: props.invoiceEmail?.from ?? "",
+            DB_CLUSTER_ARN: dbCluster.clusterArn,
+            DB_SECRET_ARN: dbCluster.secret.secretArn,
+            DB_NAME: "app_nexo",
+        };
+        const grantInvoiceDelivery = (fn) => {
+            dbCluster.grantDataApiAccess(fn);
+            invoicePdfsBucket.grantPut(fn, "accounts/*");
+            invoiceLinkSecret.grantRead(fn);
+            if (props.invoiceEmail) {
+                fn.addToRolePolicy(new iam.PolicyStatement({
+                    actions: ["ses:SendEmail"],
+                    resources: [cdk.Stack.of(this).formatArn({
+                            service: "ses",
+                            resource: "identity",
+                            resourceName: props.invoiceEmail.sesIdentity,
+                        })],
+                }));
+            }
+        };
         const sendInvoiceEmailFn = new aws_lambda_nodejs_1.NodejsFunction(this, "SendInvoiceEmailFunction", {
             runtime: lambda.Runtime.NODEJS_22_X,
             memorySize: 512,
@@ -498,30 +526,28 @@ class AppNexoBackendStack extends cdk.Stack {
             timeout: cdk.Duration.seconds(25),
             entry: path.join(process.cwd(), "lambda", "send-invoice-email.ts"),
             handler: "handler",
-            environment: {
-                INVOICE_PDFS_BUCKET_NAME: invoicePdfsBucket.bucketName,
-                INVOICE_LINK_SECRET_ARN: invoiceLinkSecret.secretArn,
-                INVOICE_DOWNLOAD_BASE_URL: downloadInvoiceUrl.url,
-                INVOICE_EMAIL_FROM: props.invoiceEmail?.from ?? "",
-                DB_CLUSTER_ARN: dbCluster.clusterArn,
-                DB_SECRET_ARN: dbCluster.secret.secretArn,
-                DB_NAME: "app_nexo",
-            },
+            environment: invoiceDeliveryEnvironment,
             bundling: invoiceLambdaBundling,
         });
-        dbCluster.grantDataApiAccess(sendInvoiceEmailFn);
-        invoicePdfsBucket.grantPut(sendInvoiceEmailFn, "accounts/*");
-        invoiceLinkSecret.grantRead(sendInvoiceEmailFn);
-        if (props.invoiceEmail) {
-            sendInvoiceEmailFn.addToRolePolicy(new iam.PolicyStatement({
-                actions: ["ses:SendEmail"],
-                resources: [cdk.Stack.of(this).formatArn({
-                        service: "ses",
-                        resource: "identity",
-                        resourceName: props.invoiceEmail.sesIdentity,
-                    })],
-            }));
-        }
+        grantInvoiceDelivery(sendInvoiceEmailFn);
+        // Daily payment reminders. Accounts opt in; the claim table makes a retried
+        // or duplicated invocation harmless, and async retries are disabled anyway.
+        const paymentRemindersFn = new aws_lambda_nodejs_1.NodejsFunction(this, "PaymentRemindersFunction", {
+            runtime: lambda.Runtime.NODEJS_22_X,
+            memorySize: 512,
+            timeout: cdk.Duration.minutes(5),
+            retryAttempts: 0,
+            entry: path.join(process.cwd(), "lambda", "payment-reminders.ts"),
+            handler: "handler",
+            environment: invoiceDeliveryEnvironment,
+            bundling: invoiceLambdaBundling,
+        });
+        grantInvoiceDelivery(paymentRemindersFn);
+        new events.Rule(this, "PaymentRemindersSchedule", {
+            description: "Daily payment reminders (14:00 UTC = 10:00 ET in summer, 09:00 in winter)",
+            schedule: events.Schedule.cron({ minute: "0", hour: "14" }),
+            targets: [new eventsTargets.LambdaFunction(paymentRemindersFn, { retryAttempts: 0 })],
+        });
         const sendInvoiceEmailDs = graphqlApi.addLambdaDataSource("SendInvoiceEmailDs", sendInvoiceEmailFn);
         const sendInvoiceEmailLambdaFn = new appsync.AppsyncFunction(this, "SendInvoiceEmailLambdaFn", {
             api: graphqlApi,
@@ -529,6 +555,34 @@ class AppNexoBackendStack extends cdk.Stack {
             name: "SendInvoiceEmailLambdaFn",
             runtime: jsRuntime,
             code: resolverFromFile("dist/mutation-send-invoice-email.js"),
+        });
+        const sendPaymentReminderLambdaFn = new appsync.AppsyncFunction(this, "SendPaymentReminderLambdaFn", {
+            api: graphqlApi,
+            dataSource: sendInvoiceEmailDs,
+            name: "SendPaymentReminderLambdaFn",
+            runtime: jsRuntime,
+            code: resolverFromFile("dist/mutation-send-payment-reminder.js"),
+        });
+        graphqlApi.createResolver("MutationSendPaymentReminderResolver", {
+            typeName: "Mutation",
+            fieldName: "sendPaymentReminder",
+            runtime: jsRuntime,
+            code: resolverFromFile("dist/pipeline-send-payment-reminder.js"),
+            pipelineConfig: [membershipGuardFn, sendPaymentReminderLambdaFn, auditWriteFn],
+        });
+        const putReminderSettingsRdsFn = new appsync.AppsyncFunction(this, "PutReminderSettingsRdsFn", {
+            api: graphqlApi,
+            dataSource: rdsDs,
+            name: "PutReminderSettingsRdsFn",
+            runtime: jsRuntime,
+            code: resolverFromFile("dist/mutation-put-reminder-settings.js"),
+        });
+        graphqlApi.createResolver("MutationPutReminderSettingsResolver", {
+            typeName: "Mutation",
+            fieldName: "putReminderSettings",
+            runtime: jsRuntime,
+            code: resolverFromFile("dist/pipeline-put-reminder-settings.js"),
+            pipelineConfig: [membershipGuardFn, putReminderSettingsRdsFn, auditWriteFn],
         });
         graphqlApi.createResolver("MutationSendInvoiceEmailResolver", {
             typeName: "Mutation",

@@ -41,6 +41,7 @@ const crmTables = [
   "bank_movements",
   "payment_reconciliations",
   "invoice_series",
+  "invoice_reminders",
 ];
 
 beforeAll(async () => {
@@ -82,6 +83,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
     "0003_crm",
     "0004_crm_financial_invariants",
     "0005_invoice_series",
+    "0006_payment_reminders",
   ]);
 
   const knexHistory = await client.query(
@@ -93,6 +95,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
     "0003_crm.sql",
     "0004_crm_financial_invariants.sql",
     "0005_invoice_series.sql",
+    "0006_payment_reminders.sql",
   ]);
 });
 
