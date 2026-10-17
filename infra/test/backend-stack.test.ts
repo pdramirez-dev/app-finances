@@ -46,6 +46,8 @@ test("domain GraphQL is served by an AppSync RDS (relational) data source", () =
   const t = synth();
   t.hasResourceProperties("AWS::AppSync::DataSource", {
     Type: "RELATIONAL_DATABASE",
+    // Without an explicit database the Data API does not target app_nexo.
+    RelationalDatabaseConfig: { RdsHttpEndpointConfig: Match.objectLike({ DatabaseName: "app_nexo" }) },
   });
 });
 

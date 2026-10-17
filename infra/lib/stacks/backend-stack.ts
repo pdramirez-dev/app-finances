@@ -279,7 +279,7 @@ export class AppNexoBackendStack extends cdk.Stack {
     });
 
     const pdfLambdaDs = graphqlApi.addLambdaDataSource("PdfLambdaDs", generateInvoicePdfFn);
-    const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!);
+    const rdsDs = graphqlApi.addRdsDataSource("DomainRdsDs", dbCluster, dbCluster.secret!, "app_nexo");
     const membershipsDs = graphqlApi.addDynamoDbDataSource("UserMembershipsDs", userMembershipsTable);
 
     const membershipGuardFn = new appsync.AppsyncFunction(this, "RequireMembershipFn", {
