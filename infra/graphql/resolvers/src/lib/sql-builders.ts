@@ -258,7 +258,8 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
   };
 }
 
-// Paid invoices are immutable; status and invoice number are left untouched
+// Paid invoices are immutable, and the new total may not drop below the
+// non-voided payments already registered; status and invoice number are left untouched
 // (status changes go through updateInvoiceStatus). Old sections are deleted in
 // the same statement, so their line items cascade and the new ones replace them.
 export function updateInvoiceFull(acc: string, args: { invoiceId: string; input: any }): SqlRequest {
@@ -266,6 +267,10 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
   return {
     statement: `WITH target AS (
         SELECT id FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'
+          AND :grandTotal >= COALESCE((
+            SELECT sum(p.amount) FROM payments p
+            WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
+          ), 0)
         FOR UPDATE
       ), valid_client AS (
         SELECT CAST(:clientId AS uuid) AS id

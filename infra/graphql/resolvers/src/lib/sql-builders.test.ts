@@ -287,6 +287,8 @@ test("updateInvoiceFull replaces header, sections and items atomically for an ed
     sections: [{ title: "S1", total: 10, lineItems: [{ description: "d", quantity: 1, amount: 10 }] }] } } as any);
   expect(r.statement).toMatch(/FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'/i);
   expect(r.statement).toMatch(/clients c WHERE c\.id = CAST\(:clientId AS uuid\) AND c\.account_id = :acc/i);
+  expect(r.statement).toMatch(/:grandTotal >= COALESCE\(\(\s*SELECT sum\(p\.amount\) FROM payments p/i);
+  expect(r.statement).toMatch(/p\.status <> 'VOIDED'/);
   expect(r.statement).toMatch(/UPDATE invoices inv SET/i);
   expect(r.statement).toMatch(/DELETE FROM invoice_sections/i);
   expect(r.statement).toMatch(/INSERT INTO invoice_sections/i);

@@ -38,7 +38,7 @@ beforeAll(async () => {
   await runMigrations(URL);
   db = new Client({ connectionString: URL });
   await db.connect();
-  await db.query("DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
+  await db.query("DELETE FROM payments; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
   await db.query("INSERT INTO accounts (id, type, display_name) VALUES ('11111111-1111-1111-1111-111111111111','COMPANY','A'),('22222222-2222-2222-2222-222222222222','COMPANY','B')");
   await db.query("INSERT INTO clients (id, account_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','Cliente A'),('bbbbbbbb-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','Cliente B')");
   await db.query(`INSERT INTO invoices (id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, grand_total) VALUES ('cccccccc-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','bbbbbbbb-0000-0000-0000-000000000001',1,'2024-01-01',1,'Cliente B','123 B Street','Project B',1000.00)`);
@@ -251,4 +251,21 @@ dbTest("updateInvoiceFull leaves paid invoices and foreign-client edits untouche
   const still = await db.query("SELECT bill_to_name FROM invoices WHERE id = $1", [created.invoiceId]);
   expect(still.rows[0].bill_to_name).toBe("Original");
   expect(await sectionLayout(created.invoiceId)).toEqual([["Old", "Old item", 0]]);
+});
+
+dbTest("updateInvoiceFull cannot lower the total below registered non-voided payments", async () => {
+  const created = await createEditableInvoice(); // grandTotal 20
+  await db.query(
+    `INSERT INTO payments (account_id, invoice_id, amount, method, reference)
+     VALUES ($1, $2, 15, 'ACH', $3)`,
+    [ACC_A, created.invoiceId, `REF-${created.invoiceId}`],
+  );
+  const edit = (grandTotal: number) => run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: {
+    date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "x", project: "x", grandTotal,
+    sections: [{ title: "S", total: grandTotal, lineItems: [{ description: "d", quantity: 1, amount: grandTotal }] }],
+  } } as any));
+
+  expect(await edit(10)).toHaveLength(0);
+  expect(await sectionLayout(created.invoiceId)).toEqual([["Old", "Old item", 0]]);
+  expect(await edit(15)).toHaveLength(1);
 });
