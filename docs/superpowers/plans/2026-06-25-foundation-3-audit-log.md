@@ -30,7 +30,7 @@
 - Modify: `infra/lib/stacks/backend-stack.ts`
 - Test: `infra/test/backend-stack.test.ts`
 
-- [ ] **Step 1: Añadir el test que falla**
+- [x] **Step 1: Añadir el test que falla**
 
 Agregar a `infra/test/backend-stack.test.ts`:
 ```ts
@@ -49,12 +49,12 @@ test("provisions the audit-log table with byEntity GSI and TTL", () => {
 });
 ```
 
-- [ ] **Step 2: Correr para verificar que falla**
+- [x] **Step 2: Correr para verificar que falla**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: FAIL — no existe la tabla con esas props.
 
-- [ ] **Step 3: Crear la tabla en `backend-stack.ts`**
+- [x] **Step 3: Crear la tabla en `backend-stack.ts`**
 
 ```ts
 const auditLogTable = new dynamodb.Table(this, "AuditLogTable", {
@@ -78,12 +78,12 @@ auditLogTable.addGlobalSecondaryIndex({
 new cdk.CfnOutput(this, "AuditLogTableName", { value: auditLogTable.tableName });
 ```
 
-- [ ] **Step 4: Correr para verificar que pasa**
+- [x] **Step 4: Correr para verificar que pasa**
 
 Run: `cd infra && npx vitest run test/backend-stack.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/lib/stacks/backend-stack.ts infra/test/backend-stack.test.ts
@@ -98,7 +98,7 @@ git commit -m "feat(infra): add append-only audit-log DynamoDB table"
 - Create: `infra/graphql/resolvers/src/lib/audit.ts`
 - Test: `infra/graphql/resolvers/src/lib/audit.test.ts`
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 `audit.test.ts`:
 ```ts
@@ -134,12 +134,12 @@ test("missing data serializes to null", () => {
 });
 ```
 
-- [ ] **Step 2: Correr para verificar que falla**
+- [x] **Step 2: Correr para verificar que falla**
 
 Run: `cd infra && npx vitest run graphql/resolvers/src/lib/audit.test.ts`
 Expected: FAIL — `buildAuditItem` no existe.
 
-- [ ] **Step 3: Implementar `audit.ts`**
+- [x] **Step 3: Implementar `audit.ts`**
 
 ```ts
 export type AuditInput = {
@@ -183,12 +183,12 @@ export function buildAuditItem(i: AuditInput): AuditItem {
 }
 ```
 
-- [ ] **Step 4: Correr para verificar que pasa**
+- [x] **Step 4: Correr para verificar que pasa**
 
 Run: `cd infra && npx vitest run graphql/resolvers/src/lib/audit.test.ts`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src/lib/audit.ts infra/graphql/resolvers/src/lib/audit.test.ts
@@ -202,7 +202,7 @@ git commit -m "feat(audit): add pure audit-log item builder with unit tests"
 **Files:**
 - Create: `infra/graphql/resolvers/src/fn-audit-write.ts`
 
-- [ ] **Step 1: Escribir la función**
+- [x] **Step 1: Escribir la función**
 
 ```ts
 import { util } from "@aws-appsync/utils";
@@ -241,12 +241,12 @@ export function response(ctx: any) {
 }
 ```
 
-- [ ] **Step 2: Bundlear y verificar salida**
+- [x] **Step 2: Bundlear y verificar salida**
 
 Run: `cd infra && npm run build:resolvers && ls graphql/resolvers/dist/fn-audit-write.js`
 Expected: el archivo existe y el builder quedó inlined.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src/fn-audit-write.ts
@@ -261,7 +261,7 @@ git commit -m "feat(audit): add shared AppSync function to write audit entries"
 - Create: `infra/graphql/resolvers/src/pipeline-put-bank-account.ts`, `pipeline-delete-client.ts`, `pipeline-update-invoice-status.ts`, `pipeline-put-account.ts`
 - Modify: `infra/lib/stacks/backend-stack.ts`
 
-- [ ] **Step 1: Escribir el código pipeline (request/response) por mutación**
+- [x] **Step 1: Escribir el código pipeline (request/response) por mutación**
 
 Cada archivo fija la metadata de auditoría en el stash y deja pasar el contexto:
 ```ts
@@ -279,7 +279,7 @@ Análogamente:
 - `pipeline-delete-client.ts` → `{ action: "DELETE", entityType: "CLIENT" }`
 - `pipeline-put-account.ts` → `{ action: "UPDATE", entityType: "ACCOUNT" }`
 
-- [ ] **Step 2: En CDK, crear las AppSync functions y los pipelines**
+- [x] **Step 2: En CDK, crear las AppSync functions y los pipelines**
 
 En `backend-stack.ts`:
 ```ts
@@ -310,14 +310,14 @@ Repetir para `putBankAccount`, `deleteClient`, `putAccount` con su función RDS 
 
 > Nota: las funciones RDS reutilizan el mismo código de resolver del Plan 2 (`mutation-*.js`); aquí pasan de ser un resolver unit a ser la primera función del pipeline.
 
-- [ ] **Step 3: Conceder permisos** — `auditLogTable.grantWriteData` queda implícito al crear el `addDynamoDbDataSource` (AppSync crea el rol). Verificar en synth.
+- [x] **Step 3: Conceder permisos** — `auditLogTable.grantWriteData` queda implícito al crear el `addDynamoDbDataSource` (AppSync crea el rol). Verificar en synth.
 
-- [ ] **Step 4: Bundlear y sintetizar**
+- [x] **Step 4: Bundlear y sintetizar**
 
 Run: `cd infra && npm run build:resolvers && npx cdk synth AppNexo-Backend-dev > /dev/null && echo OK`
 Expected: `OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add infra/graphql/resolvers/src infra/lib/stacks/backend-stack.ts
@@ -330,18 +330,18 @@ git commit -m "feat(audit): pipeline resolvers writing audit entries for sensiti
 
 **Files:** ninguno (procedimiento de verificación).
 
-- [ ] **Step 1: Documentar la verificación manual** en el PR/notas de despliegue:
+- [x] **Step 1: Documentar la verificación manual** en el PR/notas de despliegue:
   1. `cdk deploy AppNexo-Backend-dev`.
   2. Como usuario de la cuenta A, ejecutar `updateInvoiceStatus` sobre un invoice propio.
   3. `aws dynamodb query` sobre `app-nexo-dev-audit-log` con `accountId = <A>` → existe una entrada con `action=STATUS_CHANGE`, `entityType=INVOICE`, `actor=<email>`, `at` reciente.
   4. Repetir para `putBankAccount`, `deleteClient`, `putAccount`.
 
-- [ ] **Step 2: Confirmar no-regresión de mutaciones**
+- [x] **Step 2: Confirmar no-regresión de mutaciones**
 
 Run: `cd infra && npx vitest run`
 Expected: todos los tests (builders, audit, aislamiento, CDK) verdes.
 
-- [ ] **Step 3: Commit (si hubo ajustes)**
+- [x] **Step 3: Commit (si hubo ajustes)**
 
 ```bash
 git add -A && git commit -m "test(audit): full suite green after pipeline wiring"
