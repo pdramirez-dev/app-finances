@@ -5,7 +5,7 @@ import {
   putClient, putBankAccount, putAccount,
   putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, getReminderSettings, putReminderSettings, dueReminders, claimScheduledReminder, logManualReminder, completeReminder, listInvoiceReminders, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
-  normalizeMaskedBankValue, decodePageToken, nextPageToken,
+  normalizeMaskedBankValue, isMaskedBankValue, invalidMaskedBankFields, decodePageToken, nextPageToken,
 } from "./sql-builders";
 
 test("listInvoices scopes by claim accountId and ignores args.accountId", () => {
@@ -30,9 +30,10 @@ test("page tokens decode to offsets and reject tampered values", () => {
   expect(decodePageToken(null)).toBe(0);
   expect(decodePageToken("")).toBe(0);
   expect(decodePageToken("50")).toBe(50);
-  expect(() => decodePageToken("abc")).toThrow(/pagination token/i);
-  expect(() => decodePageToken("-25")).toThrow(/pagination token/i);
-  expect(() => decodePageToken("1.5")).toThrow(/pagination token/i);
+  expect(decodePageToken("abc")).toBeNull();
+  expect(decodePageToken("-25")).toBeNull();
+  expect(decodePageToken("1.5")).toBeNull();
+  expect(decodePageToken("1e3")).toBeNull();
 });
 
 test("nextPageToken continues on full pages and stops on short pages", () => {
@@ -87,10 +88,14 @@ test("putBankAccount injects account_id from claim, not from input", () => {
 });
 
 test("bank identifiers must already be safely masked", () => {
-  expect(normalizeMaskedBankValue("****6789")).toBe("****6789");
-  expect(normalizeMaskedBankValue("GB** **** 1234", 6)).toBe("GB** **** 1234");
-  expect(() => normalizeMaskedBankValue("123456789")).toThrow(/must be masked/i);
-  expect(() => normalizeMaskedBankValue("**123456")).toThrow(/final characters/i);
+  expect(normalizeMaskedBankValue(" ****6789 ")).toBe("****6789");
+  expect(isMaskedBankValue("****6789")).toBe(true);
+  expect(isMaskedBankValue("GB** **** 1234", 6)).toBe(true);
+  expect(isMaskedBankValue("•••• 1234")).toBe(true);
+  expect(isMaskedBankValue("123456789")).toBe(false);
+  expect(isMaskedBankValue("**123456")).toBe(false);
+  expect(invalidMaskedBankFields({ accountNumberMasked: "123456789", routingNumberMasked: "•••• 5678", ibanMasked: "" }))
+    .toEqual(["accountNumberMasked"]);
 });
 
 test("putAccount upserts with account id from claim and returns aliased columns", () => {
