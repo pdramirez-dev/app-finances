@@ -13,10 +13,17 @@ const BATCH_LIMIT = 200;
 /** Leave room to record the last attempt before Lambda times out. */
 const TIME_RESERVE_MS = 30_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+function stillDue(row, recipient) {
+    return (0, invoice_delivery_1.str)(row.status) === "SENT"
+        && (0, invoice_delivery_1.num)(row.balanceDue) > 0
+        && row.remindersEnabled === true
+        && (0, invoice_delivery_1.str)(row.clientEmail).trim().toLowerCase() === recipient.toLowerCase();
+}
 function createPaymentRemindersHandler(deps) {
     return async function handler() {
         const summary = {
-            notConfigured: false, selected: 0, sent: 0, failed: 0, skippedNoEmail: 0, skippedAlreadyClaimed: 0, stoppedEarly: false,
+            notConfigured: false, selected: 0, sent: 0, failed: 0, skippedNoEmail: 0, skippedAlreadyClaimed: 0,
+            skippedNoLongerDue: 0, stoppedEarly: false,
         };
         // Unconfigured stages run daily too: exit quietly instead of failing every day.
         if (!deps.sender) {
@@ -44,6 +51,14 @@ function createPaymentRemindersHandler(deps) {
                 summary.skippedNoEmail += 1;
                 continue;
             }
+            // The selection may be minutes old by now: re-read the invoice and only
+            // remind it if it is still owed, still opted in and still belongs to the
+            // client whose address was selected, so no PDF goes to a former client.
+            const [row] = await deps.runSql((0, sql_builders_1.invoiceDocument)(accountId, { invoiceId }));
+            if (!row || !stillDue(row, recipient)) {
+                summary.skippedNoLongerDue += 1;
+                continue;
+            }
             const [claim] = await deps.runSql((0, sql_builders_1.claimScheduledReminder)(accountId, {
                 invoiceId, offsetDays: (0, invoice_delivery_1.num)(due.offsetDays), scheduledFor: (0, invoice_delivery_1.str)(due.scheduledFor), recipient,
             }));
@@ -53,9 +68,6 @@ function createPaymentRemindersHandler(deps) {
             }
             const reminderId = (0, invoice_delivery_1.str)(claim.reminderId);
             try {
-                const [row] = await deps.runSql((0, sql_builders_1.invoiceDocument)(accountId, { invoiceId }));
-                if (!row)
-                    throw new Error("Invoice not found");
                 await (0, invoice_delivery_1.deliverInvoice)(deps, { accountId, invoiceId, row, to: recipient, kind: "REMINDER" });
                 summary.sent += 1;
                 await deps.runSql((0, sql_builders_1.completeReminder)(accountId, { reminderId, sent: true })).catch(() => undefined);

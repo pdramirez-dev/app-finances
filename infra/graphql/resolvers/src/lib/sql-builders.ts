@@ -415,6 +415,8 @@ export function invoiceDocument(acc: string, args: { invoiceId: string }): SqlRe
         inv.grand_total - ${nonVoidedPaymentsSum("inv")} AS "balanceDue",
         a.display_name AS "issuerName", a.legal_name AS "issuerLegalName", a.tax_id AS "issuerTaxId",
         a.address AS "issuerAddress", a.email AS "issuerEmail", a.phone AS "issuerPhone",
+        a.reminders_enabled AS "remindersEnabled",
+        (SELECT NULLIF(btrim(c.email), '') FROM clients c WHERE c.id = inv.client_id AND c.account_id = inv.account_id) AS "clientEmail",
         CAST((
           SELECT json_build_object('beneficiaryName', b.beneficiary_name, 'bankName', b.bank_name,
             'accountNumberMasked', b.account_number_masked, 'routingNumberMasked', b.routing_number_masked,
@@ -455,10 +457,11 @@ export function getReminderSettings(acc: string, _args: unknown): SqlRequest {
 }
 
 // Offsets travel as comma-separated text because the Data API has no array
-// parameters. Turning reminders on stamps reminders_enabled_at, which keeps the
-// scheduler from reminding invoices that were already overdue at that moment.
+// parameters, and are de-duplicated and sorted in SQL because this runs in
+// APPSYNC_JS (no Set, no sort comparator). Turning reminders on stamps
+// reminders_enabled_at, which keeps the scheduler from reminding invoices that
+// were already overdue at that moment.
 export function putReminderSettings(acc: string, args: { input: { enabled: boolean; offsets: number[] } }): SqlRequest {
-  const offsets = [...new Set(args.input.offsets.map((value) => Math.trunc(value)))].sort((a, b) => a - b);
   return {
     statement: `UPDATE accounts SET
         reminders_enabled_at = CASE
@@ -467,12 +470,15 @@ export function putReminderSettings(acc: string, args: { input: { enabled: boole
           ELSE now()
         END,
         reminders_enabled = :enabled,
-        reminder_offsets = CAST(string_to_array(:offsets, ',') AS int[]),
+        reminder_offsets = (
+          SELECT array_agg(DISTINCT offset_days ORDER BY offset_days)
+          FROM unnest(CAST(string_to_array(:offsets, ',') AS int[])) AS input(offset_days)
+        ),
         updated_at = now()
       WHERE id = :acc
       RETURNING id AS "accountId", reminders_enabled AS enabled, reminders_enabled_at AS "enabledAt",
         array_to_string(reminder_offsets, ',') AS "offsetsCsv"`,
-    params: { acc, enabled: Boolean(args.input.enabled), offsets: offsets.join(",") },
+    params: { acc, enabled: Boolean(args.input.enabled), offsets: args.input.offsets.join(",") },
   };
 }
 

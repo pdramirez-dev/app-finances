@@ -411,8 +411,8 @@ dbTest("reminder settings default off, round-trip offsets as text and stamp the 
   const [initial] = await run(getReminderSettings(ACC_A, {}));
   expect(initial).toMatchObject({ enabled: false, enabledAt: null, offsetsCsv: "-3,0,7,14" });
 
-  const [on] = await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [10, 0, 5] } }));
-  expect(on).toMatchObject({ enabled: true, offsetsCsv: "0,5,10" });
+  const [on] = await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [10, 0, 5, 10, -3] } }));
+  expect(on).toMatchObject({ enabled: true, offsetsCsv: "-3,0,5,10" });
   const [again] = await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [0] } }));
   expect(again.enabledAt).toEqual(on.enabledAt);
   const [off] = await run(putReminderSettings(ACC_A, { input: { enabled: false, offsets: [0] } }));
@@ -599,4 +599,17 @@ dbTest("a payment registered while an edit changes the currency uses the invoice
   } finally {
     await other.end();
   }
+});
+
+dbTest("invoiceDocument reports the client's current email and the account's reminder opt-in", async () => {
+  const invoiceId = await sentInvoiceDue("2026-02-10", 100);
+  await db.query("UPDATE clients SET email = '  ahora@cliente-a.example ' WHERE id = 'aaaaaaaa-0000-0000-0000-000000000001'");
+  await run(putReminderSettings(ACC_A, { input: { enabled: false, offsets: [0] } }));
+  const [before] = await run(invoiceDocument(ACC_A, { invoiceId }));
+  expect(before).toMatchObject({ clientEmail: "ahora@cliente-a.example", remindersEnabled: false });
+
+  await run(putReminderSettings(ACC_A, { input: { enabled: true, offsets: [0] } }));
+  await db.query("UPDATE invoices SET client_id = NULL WHERE id = $1", [invoiceId]);
+  const [after] = await run(invoiceDocument(ACC_A, { invoiceId }));
+  expect(after).toMatchObject({ clientEmail: null, remindersEnabled: true });
 });

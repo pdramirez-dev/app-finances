@@ -384,10 +384,11 @@ test("markInvoiceSent only moves drafts of the caller's account", () => {
   expect(r.statement).toMatch(/WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'/);
 });
 
-test("reminder settings pass offsets as sorted, de-duplicated text for the Data API", () => {
-  const r = putReminderSettings("ACC_A", { input: { enabled: true, offsets: [7, -3, 0, 7, 14.9] } });
-  expect(r.params).toEqual({ acc: "ACC_A", enabled: true, offsets: "-3,0,7,14" });
-  expect(r.statement).toMatch(/CAST\(string_to_array\(:offsets, ','\) AS int\[\]\)/);
+test("reminder settings pass offsets as text and de-duplicate and sort them in SQL", () => {
+  const r = putReminderSettings("ACC_A", { input: { enabled: true, offsets: [7, -3, 0, 7, 14] } });
+  expect(r.params).toEqual({ acc: "ACC_A", enabled: true, offsets: "7,-3,0,7,14" });
+  expect(r.statement).toMatch(/array_agg\(DISTINCT offset_days ORDER BY offset_days\)/);
+  expect(r.statement).toMatch(/unnest\(CAST\(string_to_array\(:offsets, ','\) AS int\[\]\)\)/);
   expect(r.statement).toMatch(/WHEN reminders_enabled THEN reminders_enabled_at\s+ELSE now\(\)/);
   expect(getReminderSettings("ACC_A", { accountId: "ACC_B" }).params).toEqual({ acc: "ACC_A" });
 });
