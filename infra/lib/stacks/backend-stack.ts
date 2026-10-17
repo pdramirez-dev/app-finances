@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
@@ -28,6 +29,12 @@ export type AppNexoBackendStackProps = cdk.StackProps & {
    * sendInvoiceEmail answers with a "not configured" error.
    */
   invoiceEmail?: { from: string; sesIdentity: string };
+  /**
+   * Deploying to a local AWS emulator (e.g. Floci). Skips CDK custom resources
+   * whose handlers reply to CloudFormation over https://, which emulators that
+   * hand out http:// response URLs cannot receive.
+   */
+  localEmulator?: boolean;
 };
 
 export type BackendExports = {
@@ -96,8 +103,10 @@ const hostedUiCss = `
 }
 `;
 
-function resolverFromFile(fileName: string) {
-  return appsync.Code.fromAsset(path.join(process.cwd(), "graphql", "resolvers", fileName));
+function resolverCode(fileName: string, inline: boolean) {
+  const file = path.join(process.cwd(), "graphql", "resolvers", fileName);
+  // Local emulators (Floci) only accept resolver code inline in the template.
+  return inline ? appsync.Code.fromInline(fs.readFileSync(file, "utf8")) : appsync.Code.fromAsset(file);
 }
 
 export class AppNexoBackendStack extends cdk.Stack {
@@ -108,6 +117,7 @@ export class AppNexoBackendStack extends cdk.Stack {
 
     const isProd = props.stage === "prod";
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
+    const resolverFromFile = (fileName: string) => resolverCode(fileName, Boolean(props.localEmulator));
 
     const invoicePdfMetadataTable = new dynamodb.Table(this, "InvoicePdfMetadataTable", {
       tableName: `app-nexo-${props.stage}-invoice-pdf-metadata`,
@@ -167,7 +177,7 @@ export class AppNexoBackendStack extends cdk.Stack {
       enforceSSL: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy,
-      autoDeleteObjects: !isProd,
+      autoDeleteObjects: !isProd && !props.localEmulator,
       lifecycleRules: [
         {
           abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),

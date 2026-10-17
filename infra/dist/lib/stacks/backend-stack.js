@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppNexoBackendStack = void 0;
+const fs = __importStar(require("node:fs"));
 const path = __importStar(require("node:path"));
 const cdk = __importStar(require("aws-cdk-lib"));
 const appsync = __importStar(require("aws-cdk-lib/aws-appsync"));
@@ -105,8 +106,10 @@ const hostedUiCss = `
   color: #b42318;
 }
 `;
-function resolverFromFile(fileName) {
-    return appsync.Code.fromAsset(path.join(process.cwd(), "graphql", "resolvers", fileName));
+function resolverCode(fileName, inline) {
+    const file = path.join(process.cwd(), "graphql", "resolvers", fileName);
+    // Local emulators (Floci) only accept resolver code inline in the template.
+    return inline ? appsync.Code.fromInline(fs.readFileSync(file, "utf8")) : appsync.Code.fromAsset(file);
 }
 class AppNexoBackendStack extends cdk.Stack {
     exports;
@@ -114,6 +117,7 @@ class AppNexoBackendStack extends cdk.Stack {
         super(scope, id, props);
         const isProd = props.stage === "prod";
         const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
+        const resolverFromFile = (fileName) => resolverCode(fileName, Boolean(props.localEmulator));
         const invoicePdfMetadataTable = new dynamodb.Table(this, "InvoicePdfMetadataTable", {
             tableName: `app-nexo-${props.stage}-invoice-pdf-metadata`,
             partitionKey: { name: "invoiceId", type: dynamodb.AttributeType.STRING },
@@ -166,7 +170,7 @@ class AppNexoBackendStack extends cdk.Stack {
             enforceSSL: true,
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             removalPolicy,
-            autoDeleteObjects: !isProd,
+            autoDeleteObjects: !isProd && !props.localEmulator,
             lifecycleRules: [
                 {
                     abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
