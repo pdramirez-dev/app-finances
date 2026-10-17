@@ -52,3 +52,6 @@ infra/graphql/resolvers/dist
 # Playwright
 /test-results/
 /playwright-report/
+
+# Floci local emulator state
+/.floci/
