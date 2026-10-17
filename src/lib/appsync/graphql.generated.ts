@@ -238,6 +238,12 @@ export type RegisterPaymentInput = {
   reference: string;
 };
 
+export type SendInvoiceEmailInput = {
+  invoiceId: string | number;
+  message?: string | null | undefined;
+  to: string;
+};
+
 export type TaskKind =
   | 'CALL'
   | 'EMAIL'
@@ -479,6 +485,13 @@ export type PutInvoiceSeriesMutationVariables = Exact<{
 
 
 export type PutInvoiceSeriesMutation = { putInvoiceSeries: { seriesId: string, accountId: string, code: string, name: string, lastNumber: number, nextNumber: number, isDefault: boolean, archived: boolean, createdAt: string, updatedAt: string } };
+
+export type SendInvoiceEmailMutationVariables = Exact<{
+  input: SendInvoiceEmailInput;
+}>;
+
+
+export type SendInvoiceEmailMutation = { sendInvoiceEmail: { invoiceId: string, sentTo: string, linkExpiresAt: string, statusUpdated: boolean, warning: string | null } };
 
 export type UpdateInvoiceStatusMutationVariables = Exact<{
   invoiceId: string | number;

@@ -147,6 +147,7 @@ type Mutation {
   createInvoiceFull(input: CreateInvoiceFullInput!): Invoice!
   updateInvoiceFull(invoiceId: ID!, input: UpdateInvoiceFullInput!): Invoice!
   putInvoiceSeries(input: PutInvoiceSeriesInput!): InvoiceSeries!
+  sendInvoiceEmail(input: SendInvoiceEmailInput!): InvoiceEmailResult!
   putInvoiceSection(input: PutInvoiceSectionInput!): InvoiceSection!
   putInvoiceLineItem(input: PutInvoiceLineItemInput!): InvoiceLineItem!
   deleteInvoiceSection(invoiceId: ID!, sectionId: ID!): Boolean!
@@ -282,6 +283,14 @@ type InvoiceLineItem {
   quantity: Float!
   amount: Float!
   position: Int!
+}
+
+type InvoiceEmailResult {
+  invoiceId: ID!
+  sentTo: String!
+  linkExpiresAt: AWSDateTime!
+  statusUpdated: Boolean!
+  warning: String
 }
 
 type PdfRequestResult {
@@ -549,6 +558,12 @@ input CreateInvoiceFullInput {
   grandTotal: Float!
   status: InvoiceStatus
   sections: [CreateInvoiceFullSectionInput!]!
+}
+
+input SendInvoiceEmailInput {
+  invoiceId: ID!
+  to: AWSEmail!
+  message: String
 }
 
 input PutInvoiceSeriesInput {

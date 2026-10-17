@@ -9,5 +9,6 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist"
   },
-  "include": ["bin/**/*.ts", "lib/**/*.ts", "lambda/**/*.ts"]
+  "include": ["bin/**/*.ts", "lib/**/*.ts", "lambda/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
 }

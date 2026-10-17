@@ -5,10 +5,12 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as rds from "aws-cdk-lib/aws-rds";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
 import type { StageName } from "../stage-config";
@@ -18,6 +20,12 @@ export type AppNexoBackendStackProps = cdk.StackProps & {
   callbackUrls: string[];
   logoutUrls: string[];
   cognitoDomainPrefix?: string;
+  /**
+   * Sender for invoice emails, e.g. "Facturas <facturas@example.com>", and the
+   * SES identity (domain or address) that is verified for it. Without both,
+   * sendInvoiceEmail answers with a "not configured" error.
+   */
+  invoiceEmail?: { from: string; sesIdentity: string };
 };
 
 export type BackendExports = {
@@ -503,6 +511,82 @@ export class AppNexoBackendStack extends cdk.Stack {
       pipelineConfig: [membershipGuardFn, putInvoiceSeriesRdsFn, auditWriteFn],
     });
 
+    // Invoice emails: the send Lambda renders a PDF snapshot to S3 and emails a
+    // signed link; the public download Lambda checks that link and redirects to a
+    // short-lived presigned S3 URL, so emailed links outlive any one credential.
+    const invoiceLinkSecret = new secretsmanager.Secret(this, "InvoiceLinkSecret", {
+      description: "HMAC key for emailed invoice download links",
+      generateSecretString: { passwordLength: 64, excludePunctuation: true },
+      removalPolicy,
+    });
+
+    const invoiceLambdaBundling = { minify: true, sourceMap: true, externalModules: [] as string[] };
+
+    const downloadInvoiceFn = new NodejsFunction(this, "DownloadInvoiceFunction", {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(10),
+      entry: path.join(process.cwd(), "lambda", "download-invoice.ts"),
+      handler: "handler",
+      environment: {
+        INVOICE_PDFS_BUCKET_NAME: invoicePdfsBucket.bucketName,
+        INVOICE_LINK_SECRET_ARN: invoiceLinkSecret.secretArn,
+      },
+      bundling: invoiceLambdaBundling,
+    });
+    invoicePdfsBucket.grantRead(downloadInvoiceFn, "accounts/*");
+    invoiceLinkSecret.grantRead(downloadInvoiceFn);
+    const downloadInvoiceUrl = downloadInvoiceFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+
+    const sendInvoiceEmailFn = new NodejsFunction(this, "SendInvoiceEmailFunction", {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      memorySize: 512,
+      // AppSync gives Lambda resolvers ~30s in total.
+      timeout: cdk.Duration.seconds(25),
+      entry: path.join(process.cwd(), "lambda", "send-invoice-email.ts"),
+      handler: "handler",
+      environment: {
+        INVOICE_PDFS_BUCKET_NAME: invoicePdfsBucket.bucketName,
+        INVOICE_LINK_SECRET_ARN: invoiceLinkSecret.secretArn,
+        INVOICE_DOWNLOAD_BASE_URL: downloadInvoiceUrl.url,
+        INVOICE_EMAIL_FROM: props.invoiceEmail?.from ?? "",
+        DB_CLUSTER_ARN: dbCluster.clusterArn,
+        DB_SECRET_ARN: dbCluster.secret!.secretArn,
+        DB_NAME: "app_nexo",
+      },
+      bundling: invoiceLambdaBundling,
+    });
+    dbCluster.grantDataApiAccess(sendInvoiceEmailFn);
+    invoicePdfsBucket.grantPut(sendInvoiceEmailFn, "accounts/*");
+    invoiceLinkSecret.grantRead(sendInvoiceEmailFn);
+    if (props.invoiceEmail) {
+      sendInvoiceEmailFn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: [cdk.Stack.of(this).formatArn({
+          service: "ses",
+          resource: "identity",
+          resourceName: props.invoiceEmail.sesIdentity,
+        })],
+      }));
+    }
+
+    const sendInvoiceEmailDs = graphqlApi.addLambdaDataSource("SendInvoiceEmailDs", sendInvoiceEmailFn);
+    const sendInvoiceEmailLambdaFn = new appsync.AppsyncFunction(this, "SendInvoiceEmailLambdaFn", {
+      api: graphqlApi,
+      dataSource: sendInvoiceEmailDs,
+      name: "SendInvoiceEmailLambdaFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-send-invoice-email.js"),
+    });
+
+    graphqlApi.createResolver("MutationSendInvoiceEmailResolver", {
+      typeName: "Mutation",
+      fieldName: "sendInvoiceEmail",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-send-invoice-email.js"),
+      pipelineConfig: [membershipGuardFn, sendInvoiceEmailLambdaFn, auditWriteFn],
+    });
+
     const requestInvoicePdfFn = new appsync.AppsyncFunction(this, "RequestInvoicePdfFn", {
       api: graphqlApi,
       dataSource: pdfLambdaDs,
@@ -582,6 +666,7 @@ export class AppNexoBackendStack extends cdk.Stack {
     new cdk.CfnOutput(this, "UserMembershipsTableName", { value: userMembershipsTable.tableName });
     new cdk.CfnOutput(this, "AuditLogTableName", { value: auditLogTable.tableName });
     new cdk.CfnOutput(this, "InvoicePdfsBucketName", { value: invoicePdfsBucket.bucketName });
+    new cdk.CfnOutput(this, "InvoiceDownloadUrl", { value: downloadInvoiceUrl.url });
     new cdk.CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
     new cdk.CfnOutput(this, "CognitoUserPoolClientId", { value: userPoolClient.userPoolClientId });
     new cdk.CfnOutput(this, "CognitoIssuer", { value: cognitoIssuer });

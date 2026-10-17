@@ -10,6 +10,7 @@ import {
   createInvoiceFull,
   deleteInvoice,
   putInvoiceSeries,
+  sendInvoiceEmail,
   updateInvoiceFull,
   updateInvoiceStatus,
 } from "@/lib/appsync/invoices";
@@ -265,4 +266,61 @@ export async function saveInvoiceSeriesAction(
   revalidatePath("/settings/invoice-series");
   revalidatePath("/invoices/new");
   return { success: seriesId ? "Serie actualizada" : "Serie creada" };
+}
+
+export type SendInvoiceEmailFormState = {
+  error?: string;
+  success?: string;
+  warning?: string;
+};
+
+const sendInvoiceEmailSchema = z.object({
+  to: z.string().trim().email("Indica un email de destino válido"),
+  message: z.string().trim().max(2000, "El mensaje no puede superar 2000 caracteres").optional()
+    .transform((value) => value || undefined),
+});
+
+function sendInvoiceEmailErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/not verified|sandbox/i.test(message)) {
+    return "SES rechazó el envío: el remitente o el destinatario no está verificado (la cuenta puede seguir en modo sandbox).";
+  }
+  if (/unauthorized|not authorized/i.test(message)) return "No tienes permiso para enviar facturas de esta cuenta";
+  // Messages raised by the send Lambda are already written for the user.
+  if (/configurado|destino|mensaje|no encontrada|inválida/i.test(message)) return message;
+  return "No se pudo enviar la factura. Inténtalo de nuevo.";
+}
+
+export async function sendInvoiceEmailAction(
+  invoiceId: string,
+  _previousState: SendInvoiceEmailFormState,
+  formData: FormData,
+): Promise<SendInvoiceEmailFormState> {
+  await requireAuth();
+
+  const result = sendInvoiceEmailSchema.safeParse({
+    to: formData.get("to"),
+    message: formData.get("message") ?? undefined,
+  });
+
+  if (!result.success) {
+    return { error: getFirstErrorMessage(result.error) };
+  }
+
+  let sent: Awaited<ReturnType<typeof sendInvoiceEmail>>;
+
+  try {
+    sent = await sendInvoiceEmail({ invoiceId, to: result.data.to, message: result.data.message });
+  } catch (error) {
+    return { error: sendInvoiceEmailErrorMessage(error) };
+  }
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+
+  const expires = new Intl.DateTimeFormat("es", { dateStyle: "long", timeZone: "UTC" }).format(new Date(sent.linkExpiresAt));
+  return {
+    success: `Factura enviada a ${sent.sentTo}. El enlace de descarga es válido hasta el ${expires}.`,
+    warning: sent.warning ?? undefined,
+  };
 }

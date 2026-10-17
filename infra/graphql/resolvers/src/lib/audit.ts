@@ -8,7 +8,8 @@ export type AuditAction =
   | "COMPLETE"
   | "RECONCILE"
   | "UNRECONCILE"
-  | "VOID";
+  | "VOID"
+  | "SEND";
 
 export type AuditEntityType =
   | "ACCOUNT"

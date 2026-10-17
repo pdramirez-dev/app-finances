@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_SIZE, type SqlRequest } from "./sql-builders";
+import { DEFAULT_PAGE_SIZE, invoiceNumberLabel, type SqlRequest } from "./sql-builders";
 
 type Args = Record<string, any>;
 
@@ -600,11 +600,7 @@ export function getCrmSummary(acc: string): SqlRequest {
 }
 
 
-// Same format as formatInvoiceNumber in the web app: "12" for the general
-// numbering, "A-0012" for a series (padded to 4 digits, never truncated).
-const INVOICE_NUMBER_LABEL =
-  `(CASE WHEN series_code = '' THEN invoice_number::text
-    ELSE series_code || '-' || lpad(invoice_number::text, GREATEST(4, length(invoice_number::text)), '0') END)`;
+
 
 export function searchWorkspace(acc: string, args: Args): SqlRequest {
   const term = `%${String(args.query ?? "").trim()}%`;
@@ -616,7 +612,7 @@ export function searchWorkspace(acc: string, args: Args): SqlRequest {
       UNION ALL SELECT 'PROJECT', id, name, status::text, updated_at FROM projects WHERE account_id = :acc AND name ILIKE :term
       UNION ALL SELECT 'TASK', id, title, status::text, updated_at FROM crm_tasks WHERE account_id = :acc AND title ILIKE :term
       UNION ALL SELECT 'CALENDAR_EVENT', id, title, event_type::text, updated_at FROM calendar_events WHERE account_id = :acc AND title ILIKE :term
-      UNION ALL SELECT 'INVOICE', id, 'Factura #' || ${INVOICE_NUMBER_LABEL}, bill_to_name, updated_at FROM invoices WHERE account_id = :acc AND (bill_to_name ILIKE :term OR project ILIKE :term OR ${INVOICE_NUMBER_LABEL} ILIKE :term)
+      UNION ALL SELECT 'INVOICE', id, 'Factura #' || ${invoiceNumberLabel()}, bill_to_name, updated_at FROM invoices WHERE account_id = :acc AND (bill_to_name ILIKE :term OR project ILIKE :term OR ${invoiceNumberLabel()} ILIKE :term)
       UNION ALL SELECT 'PAYMENT', id, reference, status::text, updated_at FROM payments WHERE account_id = :acc AND reference ILIKE :term
     ) results ORDER BY updated_at DESC, "entityId" DESC LIMIT :lim OFFSET :off`,
     params: { acc, term, ...page(args) },

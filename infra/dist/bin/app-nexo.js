@@ -51,6 +51,10 @@ for (const stageRaw of requestedStages) {
     const config = stage_config_1.STAGE_CONFIG[stage];
     const cognitoDomainPrefix = app.node.tryGetContext(`${stage}CognitoDomainPrefix`);
     const authSecret = app.node.tryGetContext(`${stage}AuthSecret`);
+    // Real sender values stay out of the repo: pass them as context, e.g.
+    // -c devInvoiceEmailFrom="Facturas <facturas@tu-dominio.com>" -c devInvoiceEmailIdentity=tu-dominio.com
+    const invoiceEmailFrom = app.node.tryGetContext(`${stage}InvoiceEmailFrom`);
+    const invoiceEmailIdentity = app.node.tryGetContext(`${stage}InvoiceEmailIdentity`);
     const env = {
         account: process.env.CDK_DEFAULT_ACCOUNT,
         region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
@@ -60,6 +64,9 @@ for (const stageRaw of requestedStages) {
         callbackUrls: config.callbackUrls,
         logoutUrls: config.logoutUrls,
         cognitoDomainPrefix,
+        invoiceEmail: invoiceEmailFrom && invoiceEmailIdentity
+            ? { from: invoiceEmailFrom, sesIdentity: invoiceEmailIdentity }
+            : undefined,
         env,
         tags: {
             Project: "app-nexo",

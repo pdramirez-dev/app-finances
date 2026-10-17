@@ -47,6 +47,15 @@ export function normalizeMaskedBankValue(value: unknown): string | null {
 const INVOICE_COLS =
   `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", version, date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
+// Same format as formatInvoiceNumber in the web app: "12" for the general
+// numbering, "A-0012" for a series (padded to 4 digits, never truncated).
+export function invoiceNumberLabel(alias?: string) {
+  const col = (name: string) => (alias ? `${alias}.${name}` : name);
+  const number = `CAST(${col("invoice_number")} AS text)`;
+  return `(CASE WHEN ${col("series_code")} = '' THEN ${number}
+    ELSE ${col("series_code")} || '-' || lpad(${number}, GREATEST(4, length(${number})), '0') END)`;
+}
+
 const SECTION_COLS =
   `id AS "sectionId", invoice_id AS "invoiceId", title, position, total`;
 
@@ -386,6 +395,45 @@ export function putInvoiceSeries(acc: string, args: { input: any }): SqlRequest 
     params: { acc, seriesId, code: seriesId ? null : i.code, name: i.name,
               lastNumber: seriesId ? 0 : Math.max((i.startNumber ?? 1) - 1, 0),
               isDefault: i.isDefault ?? false, archived: i.archived ?? false },
+  };
+}
+
+// Everything needed to render and email one invoice, in a single statement.
+// Sections, line items and the latest bank account come back as JSON text.
+export function invoiceDocument(acc: string, args: { invoiceId: string }): SqlRequest {
+  return {
+    statement: `SELECT inv.id AS "invoiceId", inv.status, ${invoiceNumberLabel("inv")} AS "invoiceLabel",
+        inv.date, inv.due_date AS "dueDate", inv.week_number AS "weekNumber", inv.bill_to_name AS "billToName",
+        inv.bill_to_address AS "billToAddress", inv.project, inv.currency, inv.notes, inv.grand_total AS "grandTotal",
+        a.display_name AS "issuerName", a.legal_name AS "issuerLegalName", a.tax_id AS "issuerTaxId",
+        a.address AS "issuerAddress", a.email AS "issuerEmail", a.phone AS "issuerPhone",
+        CAST((
+          SELECT json_build_object('beneficiaryName', b.beneficiary_name, 'bankName', b.bank_name,
+            'accountNumberMasked', b.account_number_masked, 'routingNumberMasked', b.routing_number_masked,
+            'ibanMasked', b.iban_masked, 'swiftCode', b.swift_code)
+          FROM bank_accounts b WHERE b.account_id = inv.account_id ORDER BY b.updated_at DESC, b.id LIMIT 1
+        ) AS text) AS "bankJson",
+        CAST(COALESCE((
+          SELECT json_agg(json_build_object('title', s.title, 'total', s.total, 'lineItems', COALESCE((
+              SELECT json_agg(json_build_object('description', li.description, 'quantity', li.quantity,
+                'amount', li.amount) ORDER BY li.position, li.id)
+              FROM invoice_line_items li WHERE li.section_id = s.id
+            ), CAST('[]' AS json))) ORDER BY s.position, s.id)
+          FROM invoice_sections s WHERE s.invoice_id = inv.id
+        ), CAST('[]' AS json)) AS text) AS "sectionsJson"
+      FROM invoices inv JOIN accounts a ON a.id = inv.account_id
+      WHERE inv.id = :invoiceId AND inv.account_id = :acc`,
+    params: { invoiceId: args.invoiceId, acc },
+  };
+}
+
+// Sending moves a draft to SENT; other statuses are left as they are.
+export function markInvoiceSent(acc: string, args: { invoiceId: string }): SqlRequest {
+  return {
+    statement: `UPDATE invoices SET status = 'SENT', updated_at = now()
+      WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'
+      RETURNING id AS "invoiceId", status`,
+    params: { invoiceId: args.invoiceId, acc },
   };
 }
 

@@ -3,13 +3,14 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { expect, test } from "vitest";
 import { AppNexoBackendStack } from "../lib/stacks/backend-stack";
 
-function synth() {
+function synth(extra: Partial<ConstructorParameters<typeof AppNexoBackendStack>[2]> = {}) {
   const app = new App();
   const stack = new AppNexoBackendStack(app, "Test", {
     stage: "dev",
     callbackUrls: ["http://localhost:3000"],
     logoutUrls: ["http://localhost:3000"],
     env: { account: "111111111111", region: "us-east-1" },
+    ...extra,
   });
   return Template.fromStack(stack);
 }
@@ -162,7 +163,7 @@ test("invoice edits, status changes and series changes are audited after the mem
     };
   }>;
 
-  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull", "putInvoiceSeries"]) {
+  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull", "putInvoiceSeries", "sendInvoiceEmail"]) {
     const matches = resolvers.filter((item) =>
       item.Properties.TypeName === "Mutation" && item.Properties.FieldName === fieldName,
     );
@@ -184,5 +185,57 @@ test("creates AppSync and Lambda operational alarms", () => {
   t.hasResourceProperties("AWS::CloudWatch::Alarm", {
     MetricName: "Errors",
     Namespace: "AWS/Lambda",
+  });
+});
+
+type PolicyResource = { Properties: { Roles?: Array<{ Ref: string }>; PolicyDocument: { Statement: Array<{ Action: string | string[]; Resource: unknown }> } } };
+
+function lambdaRoleRef(t: Template, idPrefix: string) {
+  const functions = t.findResources("AWS::Lambda::Function");
+  const id = Object.keys(functions).find((key) => key.startsWith(idPrefix));
+  expect(id, `missing ${idPrefix}`).toBeTruthy();
+  return (functions[id!].Properties.Role as { "Fn::GetAtt": [string, string] })["Fn::GetAtt"][0];
+}
+
+function actionsFor(t: Template, roleId: string) {
+  const policies = Object.values(t.findResources("AWS::IAM::Policy")) as PolicyResource[];
+  return policies
+    .filter((policy) => policy.Properties.Roles?.some((role) => role.Ref === roleId))
+    .flatMap((policy) => policy.Properties.PolicyDocument.Statement)
+    .flatMap((statement) => (Array.isArray(statement.Action) ? statement.Action : [statement.Action])
+      .map((action) => ({ action, resource: statement.Resource })));
+}
+
+test("only the invoice download Lambda has a public function URL", () => {
+  const t = synth();
+  const urls = Object.values(t.findResources("AWS::Lambda::Url")) as Array<{ Properties: { AuthType: string; TargetFunctionArn: { "Fn::GetAtt": [string, string] } } }>;
+  expect(urls).toHaveLength(1);
+  expect(urls[0].Properties.AuthType).toBe("NONE");
+  expect(urls[0].Properties.TargetFunctionArn["Fn::GetAtt"][0]).toMatch(/^DownloadInvoiceFunction/);
+});
+
+test("the download Lambda can only read PDFs and the link secret", () => {
+  const t = synth();
+  const actions = actionsFor(t, lambdaRoleRef(t, "DownloadInvoiceFunction")).map((entry) => entry.action);
+  expect(actions.some((action) => action.startsWith("s3:GetObject"))).toBe(true);
+  expect(actions.some((action) => action.startsWith("secretsmanager:GetSecretValue"))).toBe(true);
+  expect(actions.filter((action) => /^s3:(Put|Delete)|^rds-data:|^ses:/.test(action))).toEqual([]);
+});
+
+test("invoice emails are only allowed from the configured SES identity", () => {
+  const unconfigured = synth();
+  const sendRole = lambdaRoleRef(unconfigured, "SendInvoiceEmailFunction");
+  const before = actionsFor(unconfigured, sendRole);
+  expect(before.some((entry) => entry.action.startsWith("ses:"))).toBe(false);
+  expect(before.some((entry) => entry.action.startsWith("rds-data:"))).toBe(true);
+  expect(before.some((entry) => entry.action.startsWith("s3:PutObject"))).toBe(true);
+  expect(before.some((entry) => entry.action.startsWith("s3:GetObject"))).toBe(false);
+
+  const configured = synth({ invoiceEmail: { from: "Facturas <f@pena.example>", sesIdentity: "pena.example" } });
+  const ses = actionsFor(configured, lambdaRoleRef(configured, "SendInvoiceEmailFunction")).filter((entry) => entry.action.startsWith("ses:"));
+  expect(ses.map((entry) => entry.action)).toEqual(["ses:SendEmail"]);
+  expect(JSON.stringify(ses[0].resource)).toContain(":identity/pena.example");
+  configured.hasResourceProperties("AWS::Lambda::Function", {
+    Environment: { Variables: Match.objectLike({ INVOICE_EMAIL_FROM: "Facturas <f@pena.example>" }) },
   });
 });

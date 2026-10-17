@@ -212,8 +212,8 @@ describe("summary and workspace search", () => {
 
   test("workspace search labels and matches invoices by their series number", () => {
     const request = searchWorkspace(ACC, { query: "A-0012" });
-    expect(request.statement).toMatch(/'Factura #' \|\| \(CASE WHEN series_code = '' THEN invoice_number::text/);
-    expect(request.statement).toMatch(/lpad\(invoice_number::text, GREATEST\(4, length\(invoice_number::text\)\), '0'\) END\) ILIKE :term/);
+    expect(request.statement).toMatch(/'Factura #' \|\| \(CASE WHEN series_code = '' THEN CAST\(invoice_number AS text\)/);
+    expect(request.statement).toMatch(/lpad\(CAST\(invoice_number AS text\), GREATEST\(4, length\(CAST\(invoice_number AS text\)\)\), '0'\) END\) ILIKE :term/);
   });
 });
 
