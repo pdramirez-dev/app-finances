@@ -19,5 +19,5 @@ export const ADMIN_ONLY_FIELDS = [
 ] as const;
 
 export function requiresAdminRole(fieldName: unknown): boolean {
-  return typeof fieldName === "string" && (ADMIN_ONLY_FIELDS as readonly string[]).includes(fieldName);
+  return typeof fieldName === "string" && (ADMIN_ONLY_FIELDS as readonly string[]).indexOf(fieldName) !== -1;
 }
