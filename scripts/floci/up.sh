@@ -55,9 +55,10 @@ aws rds-data execute-statement --resource-arn "$DB_CLUSTER_ARN" --secret-arn "$D
 aws cognito-idp admin-create-user --user-pool-id "$POOL" --username "$EMAIL" --message-action SUPPRESS \
   --user-attributes Name=email,Value="$EMAIL" Name=email_verified,Value=true Name=custom:accountId,Value="$ACCOUNT_ID" >/dev/null
 aws cognito-idp admin-set-user-password --user-pool-id "$POOL" --username "$EMAIL" --password "$PASSWORD" --permanent
+NOW="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 SUB="$(aws cognito-idp admin-get-user --user-pool-id "$POOL" --username "$EMAIL" --query 'UserAttributes[?Name==`sub`].Value' --output text)"
 aws dynamodb put-item --table-name "$(output UserMembershipsTableName)" \
-  --item "{\"accountId\":{\"S\":\"$ACCOUNT_ID\"},\"userId\":{\"S\":\"$SUB\"},\"role\":{\"S\":\"OWNER\"},\"status\":{\"S\":\"ACTIVE\"}}"
+  --item "{\"accountId\":{\"S\":\"$ACCOUNT_ID\"},\"userId\":{\"S\":\"$SUB\"},\"role\":{\"S\":\"OWNER\"},\"status\":{\"S\":\"ACTIVE\"},\"createdAt\":{\"S\":\"$NOW\"},\"updatedAt\":{\"S\":\"$NOW\"}}"
 
 # SES rejects unverified senders, as the real sandbox does.
 aws sesv2 create-email-identity --email-identity nexo.local >/dev/null
