@@ -46,6 +46,11 @@ function recordsToObjects(records, columns) {
     const names = (columns ?? []).map((column, index) => column.label || column.name || `column${index}`);
     return (records ?? []).map((record) => Object.fromEntries(record.map((field, index) => [names[index], fieldValue(field)])));
 }
+// Local emulators (AWS_ENDPOINT_URL set) cannot resolve bucket.<host> names,
+// so address buckets by path there. On AWS the variable is unset.
+function s3Client() {
+    return new client_s3_1.S3Client({ forcePathStyle: Boolean(process.env.AWS_ENDPOINT_URL) });
+}
 function requireEnv(name) {
     const value = process.env[name];
     if (!value)
@@ -65,7 +70,7 @@ function cachedSecret(client, secretArn) {
 }
 function sendInvoiceEmailDeps() {
     const rds = new client_rds_data_1.RDSDataClient({});
-    const s3 = new client_s3_1.S3Client({});
+    const s3 = s3Client();
     const ses = new client_sesv2_1.SESv2Client({});
     const bucket = requireEnv("INVOICE_PDFS_BUCKET_NAME");
     return {
@@ -112,7 +117,7 @@ function sendInvoiceEmailDeps() {
     };
 }
 function downloadInvoiceDeps() {
-    const s3 = new client_s3_1.S3Client({});
+    const s3 = s3Client();
     const bucket = requireEnv("INVOICE_PDFS_BUCKET_NAME");
     return {
         getLinkSecret: cachedSecret(new client_secrets_manager_1.SecretsManagerClient({}), requireEnv("INVOICE_LINK_SECRET_ARN")),
