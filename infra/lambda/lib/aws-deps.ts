@@ -44,6 +44,12 @@ export function recordsToObjects(records: Field[][] | undefined, columns: Column
   return (records ?? []).map((record) => Object.fromEntries(record.map((field, index) => [names[index], fieldValue(field)])));
 }
 
+// Local emulators (AWS_ENDPOINT_URL set) cannot resolve bucket.<host> names,
+// so address buckets by path there. On AWS the variable is unset.
+function s3Client() {
+  return new S3Client({ forcePathStyle: Boolean(process.env.AWS_ENDPOINT_URL) });
+}
+
 function requireEnv(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not configured`);
@@ -63,7 +69,7 @@ function cachedSecret(client: SecretsManagerClient, secretArn: string) {
 
 export function sendInvoiceEmailDeps(): SendInvoiceEmailDeps {
   const rds = new RDSDataClient({});
-  const s3 = new S3Client({});
+  const s3 = s3Client();
   const ses = new SESv2Client({});
   const bucket = requireEnv("INVOICE_PDFS_BUCKET_NAME");
 
@@ -112,7 +118,7 @@ export function sendInvoiceEmailDeps(): SendInvoiceEmailDeps {
 }
 
 export function downloadInvoiceDeps(): DownloadInvoiceDeps {
-  const s3 = new S3Client({});
+  const s3 = s3Client();
   const bucket = requireEnv("INVOICE_PDFS_BUCKET_NAME");
   return {
     getLinkSecret: cachedSecret(new SecretsManagerClient({}), requireEnv("INVOICE_LINK_SECRET_ARN")),
