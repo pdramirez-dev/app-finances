@@ -7,15 +7,15 @@ import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import type { SqlRequest } from "../../graphql/resolvers/src/lib/sql-builders";
+import { sqlTypeHint } from "../../graphql/resolvers/src/lib/sql-params";
 import type { DownloadInvoiceDeps } from "../download-invoice";
 import type { SendInvoiceEmailDeps } from "../send-invoice-email";
 
-// Parameters compared against uuid columns need an explicit hint over the Data API.
-const UUID_PARAMS = new Set(["acc", "invoiceId"]);
 
 export function toSqlParameters(params: Record<string, unknown>): SqlParameter[] {
   return Object.entries(params).map(([name, value]): SqlParameter => {
-    const typeHint = UUID_PARAMS.has(name) ? "UUID" : undefined;
+    // Same name -> hint map as the AppSync resolvers (uuid/date need it over the Data API).
+    const typeHint = sqlTypeHint(name);
     if (value === null || value === undefined) return { name, value: { isNull: true }, typeHint };
     if (typeof value === "number") {
       return { name, value: Number.isInteger(value) ? { longValue: value } : { doubleValue: value }, typeHint };

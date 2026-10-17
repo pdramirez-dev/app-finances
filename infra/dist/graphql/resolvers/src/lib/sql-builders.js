@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_PAGE_SIZE = void 0;
 exports.decodePageToken = decodePageToken;
 exports.nextPageToken = nextPageToken;
+exports.isMaskedBankValue = isMaskedBankValue;
+exports.invalidMaskedBankFields = invalidMaskedBankFields;
 exports.normalizeMaskedBankValue = normalizeMaskedBankValue;
 exports.invoiceNumberLabel = invoiceNumberLabel;
 exports.listInvoices = listInvoices;
@@ -32,28 +34,49 @@ exports.deleteInvoiceLineItem = deleteInvoiceLineItem;
 exports.sectionsByInvoice = sectionsByInvoice;
 exports.lineItemsBySection = lineItemsBySection;
 exports.DEFAULT_PAGE_SIZE = 25;
+// These helpers are bundled into APPSYNC_JS resolvers: no regex, throw or
+// Number.isInteger. Invalid input comes back as null for the resolver to turn
+// into util.error().
+const DIGITS = "0123456789";
+/** Offset encoded in a page token: 0 when absent, null when tampered with. */
 function decodePageToken(token) {
     if (token === null || token === undefined || token === "")
         return 0;
-    const offset = Number(token);
-    if (!Number.isInteger(offset) || offset < 0)
-        throw new Error("Invalid pagination token");
-    return offset;
+    const text = String(token);
+    if (!text.split("").every((char) => DIGITS.indexOf(char) !== -1))
+        return null;
+    return Number(text);
 }
 function nextPageToken(offset, limit, rowCount) {
     return rowCount < limit ? null : String(offset + limit);
 }
-function normalizeMaskedBankValue(value, maxVisible = 4) {
+const MASK_CHARS = "*xX•";
+const MASK_SEPARATORS = " .-";
+/** True when a bank identifier is masked and shows at most `maxVisible` characters. */
+function isMaskedBankValue(value, maxVisible = 4) {
+    if (value === null || value === undefined || value === "")
+        return true;
+    const chars = String(value).trim().split("");
+    const hasMask = chars.some((char) => MASK_CHARS.indexOf(char) !== -1);
+    const visible = chars.filter((char) => MASK_CHARS.indexOf(char) === -1 && MASK_SEPARATORS.indexOf(char) === -1);
+    return hasMask && visible.length <= maxVisible;
+}
+function invalidMaskedBankFields(input) {
+    const invalid = [];
+    if (!isMaskedBankValue(input.accountNumberMasked))
+        invalid.push("accountNumberMasked");
+    if (!isMaskedBankValue(input.routingNumberMasked))
+        invalid.push("routingNumberMasked");
+    if (!isMaskedBankValue(input.ibanMasked, 6))
+        invalid.push("ibanMasked");
+    return invalid;
+}
+function normalizeMaskedBankValue(value) {
     if (value === null || value === undefined || value === "")
         return null;
-    const normalized = String(value).trim();
-    const visible = normalized.replace(/[*xX•\s.-]/g, "");
-    if (!/[*xX•]/.test(normalized) || visible.length > maxVisible) {
-        throw new Error("Bank identifiers must be masked and expose only their final characters");
-    }
-    return normalized;
+    return String(value).trim();
 }
-const INVOICE_COLS = `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+const INVOICE_COLS = `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", version, date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 // Same format as formatInvoiceNumber in the web app: "12" for the general
 // numbering, "A-0012" for a series (padded to 4 digits, never truncated).
 function invoiceNumberLabel(alias) {
@@ -68,7 +91,7 @@ const CLIENT_COLS = `id AS "clientId", account_id AS "accountId", name, email, p
 const ACCOUNT_COLS = `id AS "accountId", type, display_name AS "displayName", legal_name AS "legalName", tax_id AS "taxId", email, phone, address, created_at AS "createdAt", updated_at AS "updatedAt"`;
 const BANK_ACCOUNT_COLS = `id AS "bankAccountId", account_id AS "accountId", beneficiary_name AS "beneficiaryName", bank_name AS "bankName", account_number_masked AS "accountNumberMasked", routing_number_masked AS "routingNumberMasked", iban_masked AS "ibanMasked", swift_code AS "swiftCode", currency, country, created_at AS "createdAt", updated_at AS "updatedAt"`;
 function listInvoices(acc, args) {
-    const where = args.status ? "account_id = :acc AND status = :status" : "account_id = :acc";
+    const where = args.status ? "account_id = :acc AND status = CAST(:status AS invoice_status)" : "account_id = :acc";
     const params = { acc, lim: args.limit ?? exports.DEFAULT_PAGE_SIZE, off: args.offset ?? 0 };
     if (args.status)
         params.status = args.status;
@@ -98,7 +121,7 @@ function deleteInvoice(acc, args) {
 }
 function updateInvoiceStatus(acc, args) {
     return {
-        statement: `UPDATE invoices SET status = :status, updated_at = now()
+        statement: `UPDATE invoices SET status = CAST(:status AS invoice_status), updated_at = now()
                 WHERE id = :id AND account_id = :acc RETURNING ${INVOICE_COLS}`,
         params: { id: args.invoiceId, status: args.status, acc },
     };
@@ -136,7 +159,7 @@ function putClient(acc, args) {
         statement: `INSERT INTO clients (id, account_id, name, email, phone, address, tax_id, industry,
                   website, status, owner_user_id, tags, notes, updated_at)
                 VALUES (COALESCE(:id, gen_random_uuid()), :acc, :name, :email, :phone, :address, :taxId,
-                  :industry, :website, :status, :ownerUserId,
+                  :industry, :website, CAST(:status AS client_status), :ownerUserId,
                   ARRAY(SELECT jsonb_array_elements_text(CAST(:tags AS jsonb))), :notes, now())
                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email,
                   phone = EXCLUDED.phone, address = EXCLUDED.address, tax_id = EXCLUDED.tax_id,
@@ -166,7 +189,7 @@ function putBankAccount(acc, args) {
         params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
             acct: normalizeMaskedBankValue(i.accountNumberMasked),
             rout: normalizeMaskedBankValue(i.routingNumberMasked),
-            iban: normalizeMaskedBankValue(i.ibanMasked, 6),
+            iban: normalizeMaskedBankValue(i.ibanMasked),
             swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
     };
 }
@@ -174,7 +197,7 @@ function putAccount(acc, args) {
     const i = args.input;
     return {
         statement: `INSERT INTO accounts (id, type, display_name, legal_name, tax_id, email, phone, address, updated_at)
-                VALUES (:acc, :type, :displayName, :legalName, :taxId, :email, :phone, :address, now())
+                VALUES (:acc, CAST(:type AS account_type), :displayName, :legalName, :taxId, :email, :phone, :address, now())
                 ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, display_name = EXCLUDED.display_name,
                   legal_name = EXCLUDED.legal_name, tax_id = EXCLUDED.tax_id, email = EXCLUDED.email,
                   phone = EXCLUDED.phone, address = EXCLUDED.address, updated_at = now()
@@ -199,7 +222,7 @@ function putInvoiceCreate(acc, args) {
       INSERT INTO invoices (account_id, client_id, invoice_number, date, due_date, week_number, bill_to_name,
         bill_to_address, project, currency, notes, grand_total, status)
       SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
-        :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+        :currency, :notes, :grandTotal, CAST(:status AS invoice_status) FROM n CROSS JOIN valid_client
       RETURNING ${INVOICE_COLS}`,
         params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
             billName: i.billToName, billAddr: i.billToAddress, project: i.project,
@@ -263,7 +286,7 @@ function createInvoiceFull(acc, args) {
         INSERT INTO invoices (account_id, client_id, series_id, series_code, invoice_number, date, due_date,
           week_number, bill_to_name, bill_to_address, project, currency, notes, grand_total, status)
         SELECT :acc, valid_client.id, n.series_id, n.series_code, n.number, :date, :dueDate, :week, :billName,
-          :billAddr, :project, :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+          :billAddr, :project, :currency, :notes, :grandTotal, CAST(:status AS invoice_status) FROM n CROSS JOIN valid_client
         RETURNING *
       ), ${INVOICE_SECTIONS_INSERT_CTES("new_invoice")}
       SELECT ${INVOICE_COLS} FROM new_invoice`,
@@ -275,8 +298,12 @@ function createInvoiceFull(acc, args) {
             sections: serializeInvoiceSections(i.sections) },
     };
 }
-// Paid invoices are immutable, and the new total may not drop below the
-// non-voided payments already registered; status and invoice number are left untouched
+// Paid invoices are immutable, the new total may not drop below the non-voided
+// payments already registered, and the currency is fixed once payments exist.
+// expectedVersion must match: under READ COMMITTED a second, overlapping edit
+// waits for the row lock and then re-checks the row, sees the bumped version
+// and does nothing, instead of deleting sections from a stale snapshot. Status
+// and invoice number are left untouched
 // (status changes go through updateInvoiceStatus). Old sections are deleted in
 // the same statement, so their line items cascade and the new ones replace them.
 function updateInvoiceFull(acc, args) {
@@ -284,6 +311,15 @@ function updateInvoiceFull(acc, args) {
     return {
         statement: `WITH target AS (
         SELECT id FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'
+          AND version = :expectedVersion
+          AND (
+            CAST(:currency AS text) IS NULL
+            OR upper(CAST(:currency AS text)) = upper(invoices.currency)
+            OR NOT EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
+            )
+          )
           AND :grandTotal >= COALESCE((
             SELECT sum(p.amount) FROM payments p
             WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
@@ -298,7 +334,7 @@ function updateInvoiceFull(acc, args) {
         UPDATE invoices inv SET client_id = valid_client.id, date = :date, due_date = :dueDate,
           week_number = :week, bill_to_name = :billName, bill_to_address = :billAddr, project = :project,
           currency = COALESCE(CAST(:currency AS text), inv.currency), notes = :notes,
-          grand_total = :grandTotal, updated_at = now()
+          grand_total = :grandTotal, version = inv.version + 1, updated_at = now()
         FROM target CROSS JOIN valid_client
         WHERE inv.id = target.id
         RETURNING inv.*
@@ -310,7 +346,7 @@ function updateInvoiceFull(acc, args) {
         params: { acc, invoiceId: args.invoiceId, clientId: i.clientId ?? null, date: i.date,
             dueDate: i.dueDate ?? null, week: i.weekNumber, billName: i.billToName,
             billAddr: i.billToAddress, project: i.project, currency: i.currency ?? null,
-            notes: i.notes ?? null, grandTotal: i.grandTotal,
+            notes: i.notes ?? null, grandTotal: i.grandTotal, expectedVersion: i.expectedVersion,
             sections: serializeInvoiceSections(i.sections) },
     };
 }
