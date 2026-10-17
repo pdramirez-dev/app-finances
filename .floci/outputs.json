@@ -1,0 +1,21 @@
+{
+  "AppNexo-Backend-dev": {
+    "DomainDbClusterArn": "arn:aws:rds:us-east-1:000000000000:cluster:appnexo-backend-dev-domaindbef39f1ec-e32744353fa9",
+    "DomainDbSecretArn": "arn:aws:secretsmanager:us-east-1:000000000000:secret:AppNexo-Backend-dev-DomainDbSecretF248BC2B-e13796800128-ETFPP1",
+    "AppSyncApiId": "00a1117b3b664a30ad10c8c74d",
+    "AppSyncGraphqlUrl": "http://floci:4566/v1/apis/00a1117b3b664a30ad10c8c74d/graphql",
+    "InvoicePdfMetadataTableName": "app-nexo-dev-invoice-pdf-metadata",
+    "UserMembershipsTableName": "app-nexo-dev-user-memberships",
+    "AuditLogTableName": "app-nexo-dev-audit-log",
+    "InvoicePdfsBucketName": "appnexo-backend-dev-invoicepdfsbucketda782f6a-6a4031a1ec26",
+    "InvoiceDownloadUrl": "http://3ce0733302e03256bfecdf3c940264b4.lambda-url.us-east-1.floci:4566/",
+    "CognitoUserPoolId": "us-east-1_c1f9983f6",
+    "CognitoUserPoolClientId": "95aefe2cbba54e578c1d530fd9",
+    "CognitoIssuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_c1f9983f6",
+    "CognitoHostedUiDomain": "https://app-nexo-dev.auth.us-east-1.amazoncognito.com",
+    "ExportsOutputFnGetAttAppSyncApiC06E4485GraphQLUrl6689196C": "http://floci:4566/v1/apis/00a1117b3b664a30ad10c8c74d/graphql",
+    "ExportsOutputRefUserPool6BA7E5F296FD7236": "us-east-1_c1f9983f6",
+    "ExportsOutputRefUserPoolWebClient4C9370B02E2C9FF9": "95aefe2cbba54e578c1d530fd9",
+    "ExportsOutputRefUserPoolCognitoDomainD6C7F9FA874B93C7": "app-nexo-dev"
+  }
+}
