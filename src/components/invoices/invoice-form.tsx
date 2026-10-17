@@ -9,6 +9,7 @@ import type { InvoiceRecord, InvoiceSeries } from "@/lib/invoice-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { fieldA11y, FormField, submitted } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +29,7 @@ type EditableSection = {
 };
 
 const initialState: CreateInvoiceActionState = {};
+const selectClassName = "h-9 w-full rounded-md border bg-white px-3 text-sm aria-[invalid=true]:border-red-500";
 
 function newItem(): EditableItem {
   return {
@@ -200,7 +202,7 @@ export function InvoiceForm({
   }
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} className="space-y-6" noValidate>
       <input type="hidden" name="sections" value={JSON.stringify(sectionsPayload)} />
 
       <Card className="brand-surface">
@@ -208,14 +210,13 @@ export function InvoiceForm({
           <CardTitle className="brand-heading text-xl">Datos principales</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="clientId">Cliente guardado</Label>
-            <select id="clientId" name="clientId" defaultValue={invoice?.clientId ?? ""} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+          <FormField state={state} name="clientId" id="clientId" label="Cliente guardado" className="md:col-span-2"
+            hint="Vincula la factura al cliente dentro de la cuenta activa.">
+            <select key={submitted(state, "clientId", invoice?.clientId)} {...fieldA11y(state, "clientId", "clientId")} defaultValue={submitted(state, "clientId", invoice?.clientId)} className={selectClassName}>
               <option value="">Sin cliente vinculado</option>
               {clients.map((client) => <option key={client.clientId} value={client.clientId}>{client.name}</option>)}
             </select>
-            <p className="text-xs text-slate-500">Vincula la factura al cliente dentro de la cuenta activa.</p>
-          </div>
+          </FormField>
           {invoice ? (
             <div className="space-y-2 md:col-span-2">
               <Label>Numeración</Label>
@@ -225,9 +226,8 @@ export function InvoiceForm({
               <p className="text-xs text-slate-500">La serie y el número no cambian al editar.</p>
             </div>
           ) : (
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="seriesId">Serie de numeración</Label>
-              <select id="seriesId" name="seriesId" defaultValue={defaultSeriesId} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+            <FormField state={state} name="seriesId" id="seriesId" label="Serie de numeración" className="md:col-span-2">
+              <select key={submitted(state, "seriesId", defaultSeriesId)} {...fieldA11y(state, "seriesId", "seriesId")} defaultValue={submitted(state, "seriesId", defaultSeriesId)} className={selectClassName}>
                 <option value="">Numeración general</option>
                 {activeSeries.map((item) => (
                   <option key={item.seriesId} value={item.seriesId}>
@@ -238,36 +238,30 @@ export function InvoiceForm({
               <p className="text-xs text-slate-500">
                 Gestiona las series en <Link href="/settings/invoice-series" className="font-medium text-cyan-700 hover:underline">Configuración · Series de facturación</Link>.
               </p>
-            </div>
+            </FormField>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="weekNumber">Número de semana</Label>
-            <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} defaultValue={invoice?.weekNumber} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="date">Fecha</Label>
-            <Input key={defaultDates.issueDate} id="date" name="date" type="date" defaultValue={defaultDates.issueDate} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="dueDate">Fecha de vencimiento</Label>
-            <Input key={defaultDates.dueDate} id="dueDate" name="dueDate" type="date" defaultValue={defaultDates.dueDate} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project">Proyecto</Label>
-            <Input id="project" name="project" placeholder="Mantenimiento regional" defaultValue={invoice?.project} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="billToName">Facturar a</Label>
-            <Input id="billToName" name="billToName" placeholder="Nombre de la empresa" defaultValue={invoice?.billToName} required />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="billToAddress">Dirección de facturación</Label>
-            <Textarea id="billToAddress" name="billToAddress" rows={3} defaultValue={invoice?.billToAddress} required />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="notes">Notas (opcional)</Label>
-            <Textarea id="notes" name="notes" rows={3} defaultValue={invoice?.notes ?? ""} />
-          </div>
+          <FormField state={state} name="weekNumber" id="weekNumber" label="Número de semana">
+            <Input {...fieldA11y(state, "weekNumber", "weekNumber")} type="number" inputMode="numeric" min={1} max={53}
+              defaultValue={submitted(state, "weekNumber", invoice ? String(invoice.weekNumber) : "")} />
+          </FormField>
+          <FormField state={state} name="date" id="date" label="Fecha">
+            <Input key={defaultDates.issueDate} {...fieldA11y(state, "date", "date")} type="date" defaultValue={submitted(state, "date", defaultDates.issueDate)} />
+          </FormField>
+          <FormField state={state} name="dueDate" id="dueDate" label="Fecha de vencimiento">
+            <Input key={defaultDates.dueDate} {...fieldA11y(state, "dueDate", "dueDate")} type="date" defaultValue={submitted(state, "dueDate", defaultDates.dueDate)} />
+          </FormField>
+          <FormField state={state} name="project" id="project" label="Proyecto">
+            <Input {...fieldA11y(state, "project", "project")} placeholder="Mantenimiento regional" defaultValue={submitted(state, "project", invoice?.project)} />
+          </FormField>
+          <FormField state={state} name="billToName" id="billToName" label="Facturar a">
+            <Input {...fieldA11y(state, "billToName", "billToName")} placeholder="Nombre de la empresa" defaultValue={submitted(state, "billToName", invoice?.billToName)} />
+          </FormField>
+          <FormField state={state} name="billToAddress" id="billToAddress" label="Dirección de facturación" className="md:col-span-2">
+            <Textarea {...fieldA11y(state, "billToAddress", "billToAddress")} rows={3} defaultValue={submitted(state, "billToAddress", invoice?.billToAddress)} />
+          </FormField>
+          <FormField state={state} name="notes" id="notes" label="Notas (opcional)" className="md:col-span-2">
+            <Textarea {...fieldA11y(state, "notes", "notes")} rows={3} defaultValue={submitted(state, "notes", invoice?.notes)} />
+          </FormField>
         </CardContent>
       </Card>
 
@@ -387,7 +381,7 @@ export function InvoiceForm({
           <p className="brand-heading text-right text-xl text-slate-900">Total: {formatMoney(grandTotal)}</p>
 
           {state.error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm font-medium text-red-700">
                 {isEditing ? "No se pudo guardar la factura" : "No se pudo crear la factura"}
               </p>

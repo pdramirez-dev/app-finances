@@ -72,3 +72,31 @@ jobs:
       - name: Synthesize backend stack
         working-directory: infra
         run: npx cdk synth AppNexo-Backend-dev -c stages=dev
+
+  e2e:
+    # Browser flows against `next dev` in demo mode (DEV_AUTH_BYPASS): forms,
+    # server actions, validation and mobile layout. Persistence is covered by
+    # the Postgres integration tests in the validate job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run end-to-end tests
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
