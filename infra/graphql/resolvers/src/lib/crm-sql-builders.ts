@@ -74,7 +74,7 @@ export function getContact(acc: string, args: Args, userId: string): SqlRequest 
 export function listContacts(acc: string, args: Args, userId: string): SqlRequest {
   const where = ["c.account_id = :acc"];
   const params: Record<string, unknown> = { acc, userId, ...page(args) };
-  if (args.kind) { where.push("c.kind = :kind"); params.kind = args.kind; }
+  if (args.kind) { where.push("c.kind = CAST(:kind AS contact_kind)"); params.kind = args.kind; }
   if (args.clientId) { where.push("c.client_id = :clientId"); params.clientId = args.clientId; }
   if (args.search) { where.push("(c.name ILIKE :search OR c.email ILIKE :search OR c.role ILIKE :search)"); params.search = `%${args.search}%`; }
   return { statement: `SELECT ${CONTACT_COLS} FROM contacts c WHERE ${where.join(" AND ")} ORDER BY lower(c.name), c.id LIMIT :lim OFFSET :off`, params };
@@ -91,7 +91,7 @@ export function putContact(acc: string, args: Args, userId: string): SqlRequest 
         INSERT INTO contacts (id, account_id, client_id, name, role, email, phone, location, kind,
           last_contact_at, estimated_value, currency, updated_at)
         SELECT COALESCE(CAST(:id AS uuid), gen_random_uuid()), :acc, CAST(:clientId AS uuid), :name, :role, :email,
-          :phone, :location, :kind, CAST(:lastContactAt AS timestamptz), :estimatedValue, upper(:currency), now()
+          :phone, :location, CAST(:kind AS contact_kind), CAST(:lastContactAt AS timestamptz), :estimatedValue, upper(:currency), now()
         FROM valid_client
         ON CONFLICT (id) DO UPDATE SET client_id = EXCLUDED.client_id, name = EXCLUDED.name,
           role = EXCLUDED.role, email = EXCLUDED.email, phone = EXCLUDED.phone,
@@ -135,9 +135,9 @@ export function getOpportunity(acc: string, args: Args): SqlRequest {
 export function listOpportunities(acc: string, args: Args): SqlRequest {
   const where = ["o.account_id = :acc"];
   const params: Record<string, unknown> = { acc, ...page(args) };
-  if (args.stage) { where.push("o.stage = :stage"); params.stage = args.stage; }
+  if (args.stage) { where.push("o.stage = CAST(:stage AS opportunity_stage)"); params.stage = args.stage; }
   if (args.ownerUserId) { where.push("o.owner_user_id = :owner"); params.owner = args.ownerUserId; }
-  if (args.source) { where.push("o.source = :source"); params.source = args.source; }
+  if (args.source) { where.push("o.source = CAST(:source AS opportunity_source)"); params.source = args.source; }
   if (args.search) { where.push("o.title ILIKE :search"); params.search = `%${args.search}%`; }
   return { statement: `SELECT ${OPPORTUNITY_COLS} FROM opportunities o WHERE ${where.join(" AND ")} ORDER BY o.updated_at DESC, o.id DESC LIMIT :lim OFFSET :off`, params };
 }
@@ -196,7 +196,7 @@ export function getProject(acc: string, args: Args): SqlRequest {
 export function listProjects(acc: string, args: Args): SqlRequest {
   const where = ["p.account_id = :acc"];
   const params: Record<string, unknown> = { acc, ...page(args) };
-  if (args.status) { where.push("p.status = :status"); params.status = args.status; }
+  if (args.status) { where.push("p.status = CAST(:status AS project_status)"); params.status = args.status; }
   if (args.clientId) { where.push("p.client_id = :clientId"); params.clientId = args.clientId; }
   if (args.search) { where.push("(p.name ILIKE :search OR p.description ILIKE :search)"); params.search = `%${args.search}%`; }
   return { statement: `SELECT ${PROJECT_COLS} FROM projects p WHERE ${where.join(" AND ")} ORDER BY p.updated_at DESC, p.id DESC LIMIT :lim OFFSET :off`, params };
@@ -255,9 +255,9 @@ export function getTask(acc: string, args: Args): SqlRequest {
 export function listTasks(acc: string, args: Args): SqlRequest {
   const where = ["t.account_id = :acc"];
   const params: Record<string, unknown> = { acc, ...page(args) };
-  if (args.status) { where.push("t.status = :status"); params.status = args.status; }
+  if (args.status) { where.push("t.status = CAST(:status AS task_status)"); params.status = args.status; }
   if (args.ownerUserId) { where.push("t.owner_user_id = :owner"); params.owner = args.ownerUserId; }
-  if (args.priority) { where.push("t.priority = :priority"); params.priority = args.priority; }
+  if (args.priority) { where.push("t.priority = CAST(:priority AS crm_priority)"); params.priority = args.priority; }
   if (args.dueFrom) { where.push("t.due_at >= CAST(:dueFrom AS timestamptz)"); params.dueFrom = args.dueFrom; }
   if (args.dueTo) { where.push("t.due_at <= CAST(:dueTo AS timestamptz)"); params.dueTo = args.dueTo; }
   if (args.search) { where.push("(t.title ILIKE :search OR t.description ILIKE :search)"); params.search = `%${args.search}%`; }
@@ -314,7 +314,7 @@ export function listCalendarEvents(acc: string, args: Args): SqlRequest {
   const where = ["e.account_id = :acc", "e.starts_at < CAST(:to AS timestamptz)", "e.ends_at > CAST(:from AS timestamptz)"];
   const params: Record<string, unknown> = { acc, from: args.from, to: args.to, ...page(args) };
   if (args.ownerUserId) { where.push("e.owner_user_id = :owner"); params.owner = args.ownerUserId; }
-  if (args.eventType) { where.push("e.event_type = :eventType"); params.eventType = args.eventType; }
+  if (args.eventType) { where.push("e.event_type = CAST(:eventType AS calendar_event_type)"); params.eventType = args.eventType; }
   return { statement: `SELECT ${EVENT_COLS} FROM calendar_events e WHERE ${where.join(" AND ")} ORDER BY e.starts_at, e.id LIMIT :lim OFFSET :off`, params };
 }
 
@@ -355,9 +355,9 @@ export function getPayment(acc: string, args: Args): SqlRequest {
 export function listPayments(acc: string, args: Args): SqlRequest {
   const where = ["p.account_id = :acc"];
   const params: Record<string, unknown> = { acc, ...page(args) };
-  if (args.status) { where.push("p.status = :status"); params.status = args.status; }
+  if (args.status) { where.push("p.status = CAST(:status AS payment_status)"); params.status = args.status; }
   if (args.invoiceId) { where.push("p.invoice_id = :invoiceId"); params.invoiceId = args.invoiceId; }
-  if (args.method) { where.push("p.method = :method"); params.method = args.method; }
+  if (args.method) { where.push("p.method = CAST(:method AS payment_method)"); params.method = args.method; }
   return { statement: `SELECT ${PAYMENT_COLS} FROM payments p WHERE ${where.join(" AND ")} ORDER BY p.received_at DESC, p.id DESC LIMIT :lim OFFSET :off`, params };
 }
 

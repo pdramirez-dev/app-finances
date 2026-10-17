@@ -7,6 +7,7 @@ import {
   putProject,
   putTask,
 } from "./lib/crm-sql-builders";
+import { sqlVariables } from "./lib/sql-params";
 
 const builders: Record<string, (acc: string, args: any, userId: string) => any> = {
   putContact,
@@ -23,9 +24,7 @@ export function request(ctx: any) {
   const builder = builders[ctx.info.fieldName];
   if (!builder) util.error(`Unsupported CRM put mutation: ${ctx.info.fieldName}`, "ResolverConfigurationError");
   const { statement, params } = builder(acc, ctx.args, userId);
-  const variableMap: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(params)) variableMap[`:${key}`] = value;
-  return { statements: [statement], variableMap, variableTypeHintMap: {} };
+  return { statements: [statement], ...sqlVariables(params) };
 }
 
 export function response(ctx: any) {

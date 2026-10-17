@@ -1,6 +1,7 @@
 import { util } from "@aws-appsync/utils";
 import { toJsonObject } from "@aws-appsync/utils/rds";
 import { DEFAULT_PAGE_SIZE, decodePageToken, listInvoices, nextPageToken } from "./lib/sql-builders";
+import { sqlVariables } from "./lib/sql-params";
 
 export function request(ctx: any) {
   const acc = ctx.identity.claims["custom:accountId"];
@@ -12,11 +13,7 @@ export function request(ctx: any) {
     limit: ctx.args.limit,
     offset: offset as number,
   });
-  const variableMap: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) {
-    variableMap[`:${k}`] = v;
-  }
-  return { statements: [statement], variableMap, variableTypeHintMap: {} };
+  return { statements: [statement], ...sqlVariables(params) };
 }
 
 export function response(ctx: any) {

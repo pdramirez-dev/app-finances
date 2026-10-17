@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
+import { bindLikeDataApi } from "./data-api-binding";
 import {
   listClients, getClient, getInvoice,
   putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, getReminderSettings, putReminderSettings, dueReminders, claimScheduledReminder, logManualReminder, completeReminder, listInvoiceReminders, putInvoiceSection, deleteInvoiceSection,
@@ -25,12 +26,9 @@ const dbAvailable = await (async () => {
 const dbTest = test.skipIf(!dbAvailable);
 let db: Client;
 
-// Ejecuta un SqlRequest (:name) sustituyendo por placeholders posicionales de pg.
+// Ejecuta un SqlRequest tipando los parámetros como lo hace el Data API.
 async function run(req: { statement: string; params: Record<string, unknown> }) {
-  const names = Object.keys(req.params);
-  const text = req.statement.replace(/:([a-zA-Z_]+)/g, (_, n) => `$${names.indexOf(n) + 1}`);
-  const values = names.map((n) => req.params[n]);
-  const { rows } = await db.query(text, values);
+  const { rows } = await db.query(bindLikeDataApi(req));
   return rows;
 }
 
@@ -507,11 +505,7 @@ dbTest("invoiceDocument reports the balance due after non-voided payments", asyn
 // --- Review findings: concurrent edits and payment currency -------------------
 
 function positional(req: { statement: string; params: Record<string, unknown> }) {
-  const names = Object.keys(req.params);
-  return {
-    text: req.statement.replace(/:([a-zA-Z_]+)/g, (_, n) => `$${names.indexOf(n) + 1}`),
-    values: names.map((n) => req.params[n]),
-  };
+  return bindLikeDataApi(req);
 }
 
 const editInput = (title: string, total: number, extra: Record<string, unknown> = {}) => ({

@@ -1,6 +1,7 @@
 import { util } from "@aws-appsync/utils";
 import { toJsonObject } from "@aws-appsync/utils/rds";
 import { invalidMaskedBankFields, putBankAccount } from "./lib/sql-builders";
+import { sqlVariables } from "./lib/sql-params";
 
 export function request(ctx: any) {
   const acc = ctx.identity.claims["custom:accountId"];
@@ -9,11 +10,7 @@ export function request(ctx: any) {
     util.error("Bank identifiers must be masked and expose only their final characters", "InvalidBankAccountInput");
   }
   const { statement, params } = putBankAccount(acc, ctx.args);
-  const variableMap: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) {
-    variableMap[`:${k}`] = v;
-  }
-  return { statements: [statement], variableMap, variableTypeHintMap: {} };
+  return { statements: [statement], ...sqlVariables(params) };
 }
 
 export function response(ctx: any) {
