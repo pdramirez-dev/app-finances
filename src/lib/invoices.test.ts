@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatInvoiceNumber, toLocalDateInputValue } from "@/lib/invoices";
+import { formatDateOnly, formatInvoiceNumber, toLocalDateInputValue } from "@/lib/invoices";
 
 describe("formatInvoiceNumber", () => {
   it("keeps the general numbering as a plain number", () => {
@@ -19,5 +19,13 @@ describe("toLocalDateInputValue", () => {
     // 9pm local on Oct 16 is already Oct 17 in UTC for timezones west of UTC.
     expect(toLocalDateInputValue(new Date(2026, 9, 16, 21, 30))).toBe("2026-10-16");
     expect(toLocalDateInputValue(new Date(2026, 0, 5, 0, 0))).toBe("2026-01-05");
+  });
+});
+
+describe("formatDateOnly", () => {
+  it("shows the stored calendar day whatever the local timezone", () => {
+    // new Date("2026-07-10") is UTC midnight: 9pm on July 9 in New York.
+    expect(formatDateOnly(new Date("2026-07-10"))).toBe("07/10/2026");
+    expect(formatDateOnly(new Date("2027-01-01"))).toBe("01/01/2027");
   });
 });

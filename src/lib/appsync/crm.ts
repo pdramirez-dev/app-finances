@@ -723,7 +723,7 @@ export async function putCalendarEvent(input: PutCalendarEventInput) {
 function paymentInvoiceLabel(invoice: InvoiceRecord) {
   return invoice.seriesCode
     ? formatInvoiceNumber(invoice)
-    : `INV-${invoice.date.getFullYear()}-${String(invoice.invoiceNumber).padStart(4, "0")}`;
+    : `INV-${invoice.date.getUTCFullYear()}-${String(invoice.invoiceNumber).padStart(4, "0")}`;
 }
 
 function findInvoiceForPayment(invoices: InvoiceRecord[], reference: string) {

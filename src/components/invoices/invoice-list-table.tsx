@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { format } from "date-fns";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -10,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { InvoiceRecord, InvoiceStatus } from "@/lib/invoice-types";
-import { formatInvoiceNumber, formatMoney } from "@/lib/invoices";
+import { formatDateOnly, formatInvoiceNumber, formatMoney } from "@/lib/invoices";
 
 const statusClassMap: Record<InvoiceStatus, string> = {
   DRAFT: "bg-amber-100 text-amber-900 hover:bg-amber-100",
@@ -139,7 +138,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
                   onClick={() => setSelectedInvoiceId(invoice.invoiceId)}
                 >
                   <TableCell className="font-medium">{formatInvoiceNumber(invoice)}</TableCell>
-                  <TableCell>{format(new Date(invoice.date), "MM/dd/yyyy")}</TableCell>
+                  <TableCell>{formatDateOnly(new Date(invoice.date))}</TableCell>
                   <TableCell>{invoice.billToName}</TableCell>
                   <TableCell>
                     <Badge className={statusClassMap[invoice.status]}>{statusLabelMap[invoice.status]}</Badge>
