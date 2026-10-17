@@ -35,16 +35,16 @@ export function NewInvoiceSeriesForm() {
     <form action={formAction} className="grid gap-4 md:grid-cols-3">
       <div className="space-y-2">
         <Label htmlFor="series-code">Código</Label>
-        <Input id="series-code" name="code" placeholder="A, R, 2026" maxLength={12} required className="uppercase" />
+        <Input id="series-code" name="code" placeholder="A, R, 2026" defaultValue={state.values?.code ?? ""} maxLength={12} required className="uppercase" />
         <p className="text-xs text-slate-500">Letras, números o guiones. No se puede cambiar después.</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="series-name">Nombre</Label>
-        <Input id="series-name" name="name" placeholder="Facturas de servicio" required />
+        <Input id="series-name" name="name" placeholder="Facturas de servicio" defaultValue={state.values?.name ?? ""} required />
       </div>
       <div className="space-y-2">
         <Label htmlFor="series-start">Número inicial</Label>
-        <Input id="series-start" name="startNumber" type="number" min={1} defaultValue={1} />
+        <Input id="series-start" name="startNumber" type="number" min={1} defaultValue={state.values?.startNumber ?? "1"} />
         <p className="text-xs text-slate-500">Útil si continúas la numeración de otro sistema.</p>
       </div>
       <div className="md:col-span-3">

@@ -350,7 +350,7 @@ export function PipelineBoard({ initialOpportunities }: { initialOpportunities: 
           </div>
         </div>
 
-        <div className="overflow-x-auto p-4">
+        <div className="relative overflow-x-auto p-4">
           <div className="grid min-w-[1380px] grid-cols-5 gap-3" role="list" aria-label="Etapas del pipeline">
             {pipelineStages.map((stage) => {
               const items = filtered.filter((opportunity) => opportunity.stage === stage.id);

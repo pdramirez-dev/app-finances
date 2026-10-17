@@ -18,6 +18,6 @@
 
 ## Calidad UX
 
-- [ ] Validaciones de formularios con `zod` y mensajes en español.
-- [ ] Pruebas de integración de flujos principales (crear cuenta, crear cliente, guardar banco).
-- [ ] Revisión responsive en desktop y mobile.
+- [x] Validaciones de formularios con `zod` y mensajes en español (errores por campo, valores conservados tras un error).
+- [x] Pruebas de integración de flujos principales (crear cuenta, crear cliente, guardar banco, crear factura) con Playwright: `npm run test:e2e`.
+- [x] Revisión responsive en desktop y mobile (sin desplazamiento lateral a 390px en 17 rutas, verificado en `e2e/responsive.spec.ts`).

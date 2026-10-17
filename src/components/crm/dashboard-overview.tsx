@@ -133,7 +133,7 @@ export function DashboardOverview({ firstName, summary }: { firstName: string; s
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores principales">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores principales">
         {liveMetrics.map((metric) => (
           <Card key={metric.label} className="gap-4 rounded-2xl border-slate-200 bg-white py-5 shadow-sm">
             <CardContent className="px-5">
@@ -155,7 +155,7 @@ export function DashboardOverview({ firstName, summary }: { firstName: string; s
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
         <Card className="gap-4 rounded-2xl border-slate-200 py-5 shadow-sm">
           <CardHeader className="flex-row items-start justify-between gap-4 px-5">
             <div>
@@ -217,7 +217,7 @@ export function DashboardOverview({ firstName, summary }: { firstName: string; s
         </Card>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card className="gap-3 rounded-2xl border-slate-200 py-5 shadow-sm">
           <CardHeader className="flex-row items-center justify-between px-5">
             <div>
@@ -275,7 +275,7 @@ export function DashboardOverview({ firstName, summary }: { firstName: string; s
         </Card>
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <section className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="gap-3 rounded-2xl border-slate-200 py-5 shadow-sm">
           <CardHeader className="px-5"><CardTitle className="brand-heading text-lg">Actividad reciente</CardTitle></CardHeader>
           <CardContent className="grid gap-4 px-5 sm:grid-cols-3">

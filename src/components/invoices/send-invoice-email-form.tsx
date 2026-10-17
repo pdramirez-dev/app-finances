@@ -28,13 +28,14 @@ export function SendInvoiceEmailForm({
     <form action={formAction} className="grid gap-4 md:grid-cols-2">
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-to`}>Para</Label>
-        <Input id={`${idPrefix}-to`} name="to" type="email" defaultValue={defaultTo ?? ""} placeholder="cuentas@cliente.com" required />
+        <Input id={`${idPrefix}-to`} name="to" type="email" defaultValue={state.values?.to ?? defaultTo ?? ""} placeholder="cuentas@cliente.com" required />
       </div>
       <div className="space-y-2 md:col-span-2">
         <Label htmlFor={`${idPrefix}-message`}>Mensaje (opcional)</Label>
         <Textarea
           id={`${idPrefix}-message`}
           name="message"
+          defaultValue={state.values?.message ?? ""}
           rows={3}
           maxLength={2000}
           placeholder={reminder ? "Quedamos atentos a tu pago." : "Gracias por tu confianza."}

@@ -3,7 +3,7 @@
 import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import type { CreateInvoiceFullInput } from "@/lib/appsync/graphql.generated";
 import {
@@ -18,27 +18,41 @@ import {
 } from "@/lib/appsync/invoices";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { calculateGrandTotal, calculateSectionTotal } from "@/lib/invoices";
+import { type FormState, formValues, zodFailure } from "@/lib/form-state";
 import { requireAuth } from "@/lib/require-auth";
 import { createInvoiceInputSchema, invoiceSectionsInputSchema } from "@/lib/validations";
 
-export type CreateInvoiceActionState = {
-  error?: string;
-};
+export type CreateInvoiceActionState = FormState;
 
 function getFirstErrorMessage(error: z.ZodError) {
   const firstIssue = error.issues.at(0);
-  return firstIssue?.message ?? "Invalid form values";
+  return firstIssue?.message ?? "Revisa los datos del formulario";
+}
+
+// Section issues point deep into the JSON (sections.0.items.1.amount); say
+// where in words, since those inputs have no field of their own in the state.
+function sectionsIssueMessage(error: z.ZodError) {
+  const issue = error.issues.at(0);
+  if (!issue) return "Revisa las secciones";
+  const [sectionIndex, itemsKey, itemIndex] = issue.path;
+  const where = [
+    typeof sectionIndex === "number" ? `Sección ${sectionIndex + 1}` : null,
+    itemsKey === "items" && typeof itemIndex === "number" ? `concepto ${itemIndex + 1}` : null,
+  ].filter(Boolean).join(", ");
+  return where ? `${where}: ${issue.message}` : issue.message;
 }
 
 type ParsedInvoiceForm =
-  | { error: string }
+  | { failure: FormState }
   | { input: Omit<CreateInvoiceFullInput, "status"> };
 
 function parseInvoiceForm(formData: FormData): ParsedInvoiceForm {
+  const values = formValues(formData);
+  delete values.sections;
   const sectionsRaw = formData.get("sections");
 
   if (typeof sectionsRaw !== "string") {
-    return { error: "Sections are required" };
+    return { failure: { error: "La factura necesita al menos una sección", values } };
   }
 
   let parsedSections: unknown;
@@ -46,13 +60,14 @@ function parseInvoiceForm(formData: FormData): ParsedInvoiceForm {
   try {
     parsedSections = JSON.parse(sectionsRaw);
   } catch {
-    return { error: "Sections JSON is invalid" };
+    return { failure: { error: "No se pudieron leer las secciones de la factura", values } };
   }
 
   const sectionsResult = invoiceSectionsInputSchema.safeParse(parsedSections);
 
   if (!sectionsResult.success) {
-    return { error: getFirstErrorMessage(sectionsResult.error) };
+    const message = sectionsIssueMessage(sectionsResult.error);
+    return { failure: { error: message, fieldErrors: { sections: message }, values } };
   }
 
   const payloadResult = createInvoiceInputSchema.safeParse({
@@ -68,7 +83,7 @@ function parseInvoiceForm(formData: FormData): ParsedInvoiceForm {
   });
 
   if (!payloadResult.success) {
-    return { error: getFirstErrorMessage(payloadResult.error) };
+    return { failure: zodFailure(payloadResult.error, values) };
   }
 
   const payload = payloadResult.data;
@@ -105,14 +120,14 @@ export async function createInvoiceAction(
 
   const parsed = parseInvoiceForm(formData);
 
-  if ("error" in parsed) {
-    return { error: parsed.error };
+  if ("failure" in parsed) {
+    return parsed.failure;
   }
 
   const seriesId = z.union([z.literal(""), z.string().uuid()]).safeParse(formData.get("seriesId") ?? "");
 
   if (!seriesId.success) {
-    return { error: "Selecciona una serie válida" };
+    return { error: "Selecciona una serie válida", fieldErrors: { seriesId: "Selecciona una serie válida" }, values: formValues(formData) };
   }
 
   let createdInvoice: Awaited<ReturnType<typeof createInvoiceFull>>;
@@ -124,7 +139,7 @@ export async function createInvoiceAction(
       status: "DRAFT",
     });
   } catch {
-    return { error: "No se pudo crear la factura. Verifica que la serie siga activa e inténtalo de nuevo." };
+    return { error: "No se pudo crear la factura. Verifica que la serie siga activa e inténtalo de nuevo.", values: formValues(formData) };
   }
 
   revalidatePath("/invoices");
@@ -140,8 +155,8 @@ export async function updateInvoiceAction(
 
   const parsed = parseInvoiceForm(formData);
 
-  if ("error" in parsed) {
-    return { error: parsed.error };
+  if ("failure" in parsed) {
+    return parsed.failure;
   }
 
   const expectedVersion = Number(formData.get("expectedVersion"));
@@ -153,7 +168,7 @@ export async function updateInvoiceAction(
   try {
     await updateInvoiceFull(invoiceId, { ...parsed.input, expectedVersion });
   } catch {
-    return { error: "No se pudo guardar la factura: cambió mientras la editabas, ya está pagada, el total queda por debajo de lo cobrado o cambiaría la moneda con pagos registrados. Recarga la página e inténtalo de nuevo." };
+    return { error: "No se pudo guardar la factura: cambió mientras la editabas, ya está pagada, el total queda por debajo de lo cobrado o cambiaría la moneda con pagos registrados. Recarga la página e inténtalo de nuevo.", values: formValues(formData) };
   }
 
   revalidatePath("/invoices");
@@ -205,6 +220,7 @@ export async function deleteInvoiceAction(formData: FormData) {
 export type InvoiceSeriesFormState = {
   error?: string;
   success?: string;
+  values?: Record<string, string>;
 };
 
 const checkbox = z.union([z.literal("on"), z.literal("")]).optional().transform((value) => value === "on");
@@ -252,7 +268,7 @@ export async function saveInvoiceSeriesAction(
   });
 
   if (!result.success) {
-    return { error: getFirstErrorMessage(result.error) };
+    return { error: getFirstErrorMessage(result.error), values: formValues(formData) };
   }
 
   const { seriesId, code, name, startNumber, isDefault, archived } = result.data;
@@ -262,7 +278,7 @@ export async function saveInvoiceSeriesAction(
       ? { seriesId, name, isDefault, archived }
       : { code, name, startNumber, isDefault });
   } catch (error) {
-    return { error: invoiceSeriesErrorMessage(error) };
+    return { error: invoiceSeriesErrorMessage(error), values: formValues(formData) };
   }
 
   revalidatePath("/settings/invoice-series");
@@ -274,6 +290,7 @@ export type SendInvoiceEmailFormState = {
   error?: string;
   success?: string;
   warning?: string;
+  values?: Record<string, string>;
 };
 
 const sendInvoiceEmailSchema = z.object({
@@ -307,7 +324,7 @@ async function deliverFromForm(
   });
 
   if (!result.success) {
-    return { error: getFirstErrorMessage(result.error) };
+    return { error: getFirstErrorMessage(result.error), values: formValues(formData) };
   }
 
   let sent: Awaited<ReturnType<typeof sendInvoiceEmail>>;
@@ -315,7 +332,7 @@ async function deliverFromForm(
   try {
     sent = await deliver({ invoiceId, to: result.data.to, message: result.data.message });
   } catch (error) {
-    return { error: sendInvoiceEmailErrorMessage(error) };
+    return { error: sendInvoiceEmailErrorMessage(error), values: formValues(formData) };
   }
 
   revalidatePath(`/invoices/${invoiceId}`);
@@ -347,6 +364,7 @@ export async function sendPaymentReminderAction(
 export type ReminderSettingsFormState = {
   error?: string;
   success?: string;
+  values?: Record<string, string>;
 };
 
 const reminderSettingsSchema = z.object({
@@ -376,7 +394,7 @@ export async function saveReminderSettingsAction(
   });
 
   if (!result.success) {
-    return { error: getFirstErrorMessage(result.error) };
+    return { error: getFirstErrorMessage(result.error), values: formValues(formData) };
   }
 
   try {
@@ -387,6 +405,7 @@ export async function saveReminderSettingsAction(
       error: /unauthorized|not authorized/i.test(message)
         ? "Solo los administradores pueden cambiar los recordatorios"
         : "No se pudieron guardar los recordatorios",
+      values: formValues(formData),
     };
   }
 

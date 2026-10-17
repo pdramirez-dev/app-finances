@@ -4,8 +4,14 @@ Todos los cambios importantes del proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+### Fixed
+
+- El tablero del pipeline desplazaba toda la página en móvil (textos `sr-only` absolutos escapaban del contenedor con scroll).
+
 ### Added
 
+- Calidad de formularios: mensajes de zod en español (locale `es`), errores junto a cada campo con `aria-invalid`/`aria-describedby`, y los datos tecleados se conservan tras un envío fallido.
+- Pruebas end-to-end con Playwright (flujos de cuenta, cliente, banco, factura y configuración) y verificación responsive a 390px; job `e2e` en CI.
 - Recordatorios de pago: envío diario automático (opt-in por cuenta, días configurables respecto al vencimiento, sin recordatorios atrasados al activarlos, deduplicados con reserva previa) y recordatorio manual desde la factura con historial. Migración `0006_payment_reminders`.
 - Envío de facturas por email: PDF generado en el servidor (pdf-lib) y guardado en S3; el email lleva un enlace firmado (30 días) que redirige a una URL prefirmada de S3 de 5 minutos. Los borradores pasan a Enviada y cada envío queda auditado.
 - Numeración de facturas por serie: series con código propio (p. ej. `A-0001`), número inicial configurable, serie predeterminada por cuenta y archivado. Las facturas sin serie conservan la numeración general (migración `0005_invoice_series`).
