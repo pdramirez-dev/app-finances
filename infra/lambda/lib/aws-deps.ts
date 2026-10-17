@@ -1,4 +1,6 @@
-import { ExecuteStatementCommand, RDSDataClient, type SqlParameter } from "@aws-sdk/client-rds-data";
+import {
+  type ColumnMetadata, ExecuteStatementCommand, type Field, RDSDataClient, type SqlParameter,
+} from "@aws-sdk/client-rds-data";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
@@ -21,6 +23,25 @@ export function toSqlParameters(params: Record<string, unknown>): SqlParameter[]
     if (typeof value === "boolean") return { name, value: { booleanValue: value }, typeHint };
     return { name, value: { stringValue: String(value) }, typeHint };
   });
+}
+
+function fieldValue(field: Field): unknown {
+  if (field.isNull) return null;
+  if (field.stringValue !== undefined) return field.stringValue;
+  if (field.longValue !== undefined) return field.longValue;
+  if (field.doubleValue !== undefined) return field.doubleValue;
+  if (field.booleanValue !== undefined) return field.booleanValue;
+  return null;
+}
+
+/**
+ * Rows as objects keyed by column label. Built from plain records rather than
+ * formatRecordsAs: "JSON", which local emulators (Floci) do not implement and
+ * which AWS also answers with records + metadata.
+ */
+export function recordsToObjects(records: Field[][] | undefined, columns: ColumnMetadata[] | undefined) {
+  const names = (columns ?? []).map((column, index) => column.label || column.name || `column${index}`);
+  return (records ?? []).map((record) => Object.fromEntries(record.map((field, index) => [names[index], fieldValue(field)])));
 }
 
 function requireEnv(name: string) {
@@ -54,9 +75,9 @@ export function sendInvoiceEmailDeps(): SendInvoiceEmailDeps {
         database: process.env.DB_NAME ?? "app_nexo",
         sql: request.statement,
         parameters: toSqlParameters(request.params),
-        formatRecordsAs: "JSON",
+        includeResultMetadata: true,
       }));
-      return result.formattedRecords ? JSON.parse(result.formattedRecords) : [];
+      return recordsToObjects(result.records, result.columnMetadata);
     },
     async putPdf(key, body, filename) {
       await s3.send(new PutObjectCommand({
