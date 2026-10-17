@@ -2,31 +2,50 @@ export type SqlRequest = { statement: string; params: Record<string, unknown> };
 
 export const DEFAULT_PAGE_SIZE = 25;
 
-export function decodePageToken(token: unknown): number {
+// These helpers are bundled into APPSYNC_JS resolvers: no regex, throw or
+// Number.isInteger. Invalid input comes back as null for the resolver to turn
+// into util.error().
+const DIGITS = "0123456789";
+
+/** Offset encoded in a page token: 0 when absent, null when tampered with. */
+export function decodePageToken(token: unknown): number | null {
   if (token === null || token === undefined || token === "") return 0;
-  const offset = Number(token);
-  if (!Number.isInteger(offset) || offset < 0) throw new Error("Invalid pagination token");
-  return offset;
+  const text = String(token);
+  if (!text.split("").every((char) => DIGITS.indexOf(char) !== -1)) return null;
+  return Number(text);
 }
 
 export function nextPageToken(offset: number, limit: number, rowCount: number): string | null {
   return rowCount < limit ? null : String(offset + limit);
 }
 
-export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string | null {
+const MASK_CHARS = "*xX•";
+const MASK_SEPARATORS = " .-";
+
+/** True when a bank identifier is masked and shows at most `maxVisible` characters. */
+export function isMaskedBankValue(value: unknown, maxVisible = 4): boolean {
+  if (value === null || value === undefined || value === "") return true;
+  const chars = String(value).trim().split("");
+  const hasMask = chars.some((char) => MASK_CHARS.indexOf(char) !== -1);
+  const visible = chars.filter((char) => MASK_CHARS.indexOf(char) === -1 && MASK_SEPARATORS.indexOf(char) === -1);
+  return hasMask && visible.length <= maxVisible;
+}
+
+export function invalidMaskedBankFields(input: Record<string, unknown>): string[] {
+  const invalid: string[] = [];
+  if (!isMaskedBankValue(input.accountNumberMasked)) invalid.push("accountNumberMasked");
+  if (!isMaskedBankValue(input.routingNumberMasked)) invalid.push("routingNumberMasked");
+  if (!isMaskedBankValue(input.ibanMasked, 6)) invalid.push("ibanMasked");
+  return invalid;
+}
+
+export function normalizeMaskedBankValue(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
-  const normalized = String(value).trim();
-  const visible = normalized.replace(/[*xX•\s.-]/g, "");
-
-  if (!/[*xX•]/.test(normalized) || visible.length > maxVisible) {
-    throw new Error("Bank identifiers must be masked and expose only their final characters");
-  }
-
-  return normalized;
+  return String(value).trim();
 }
 
 const INVOICE_COLS =
-  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", version, date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 // Same format as formatInvoiceNumber in the web app: "12" for the general
 // numbering, "A-0012" for a series (padded to 4 digits, never truncated).
@@ -161,7 +180,7 @@ export function putBankAccount(acc: string, args: { input: any }): SqlRequest {
     params: { id: i.bankAccountId ?? null, acc, ben: i.beneficiaryName, bank: i.bankName,
               acct: normalizeMaskedBankValue(i.accountNumberMasked),
               rout: normalizeMaskedBankValue(i.routingNumberMasked),
-              iban: normalizeMaskedBankValue(i.ibanMasked, 6),
+              iban: normalizeMaskedBankValue(i.ibanMasked),
               swift: i.swiftCode ?? null, cur: i.currency, country: i.country ?? null },
   };
 }
@@ -276,8 +295,12 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
   };
 }
 
-// Paid invoices are immutable, and the new total may not drop below the
-// non-voided payments already registered; status and invoice number are left untouched
+// Paid invoices are immutable, the new total may not drop below the non-voided
+// payments already registered, and the currency is fixed once payments exist.
+// expectedVersion must match: under READ COMMITTED a second, overlapping edit
+// waits for the row lock and then re-checks the row, sees the bumped version
+// and does nothing, instead of deleting sections from a stale snapshot. Status
+// and invoice number are left untouched
 // (status changes go through updateInvoiceStatus). Old sections are deleted in
 // the same statement, so their line items cascade and the new ones replace them.
 export function updateInvoiceFull(acc: string, args: { invoiceId: string; input: any }): SqlRequest {
@@ -285,6 +308,15 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
   return {
     statement: `WITH target AS (
         SELECT id FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'
+          AND version = :expectedVersion
+          AND (
+            CAST(:currency AS text) IS NULL
+            OR upper(CAST(:currency AS text)) = upper(invoices.currency)
+            OR NOT EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
+            )
+          )
           AND :grandTotal >= COALESCE((
             SELECT sum(p.amount) FROM payments p
             WHERE p.account_id = :acc AND p.invoice_id = invoices.id AND p.status <> 'VOIDED'
@@ -299,7 +331,7 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
         UPDATE invoices inv SET client_id = valid_client.id, date = :date, due_date = :dueDate,
           week_number = :week, bill_to_name = :billName, bill_to_address = :billAddr, project = :project,
           currency = COALESCE(CAST(:currency AS text), inv.currency), notes = :notes,
-          grand_total = :grandTotal, updated_at = now()
+          grand_total = :grandTotal, version = inv.version + 1, updated_at = now()
         FROM target CROSS JOIN valid_client
         WHERE inv.id = target.id
         RETURNING inv.*
@@ -311,7 +343,7 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
     params: { acc, invoiceId: args.invoiceId, clientId: i.clientId ?? null, date: i.date,
               dueDate: i.dueDate ?? null, week: i.weekNumber, billName: i.billToName,
               billAddr: i.billToAddress, project: i.project, currency: i.currency ?? null,
-              notes: i.notes ?? null, grandTotal: i.grandTotal,
+              notes: i.notes ?? null, grandTotal: i.grandTotal, expectedVersion: i.expectedVersion,
               sections: serializeInvoiceSections(i.sections) },
   };
 }
@@ -383,6 +415,8 @@ export function invoiceDocument(acc: string, args: { invoiceId: string }): SqlRe
         inv.grand_total - ${nonVoidedPaymentsSum("inv")} AS "balanceDue",
         a.display_name AS "issuerName", a.legal_name AS "issuerLegalName", a.tax_id AS "issuerTaxId",
         a.address AS "issuerAddress", a.email AS "issuerEmail", a.phone AS "issuerPhone",
+        a.reminders_enabled AS "remindersEnabled",
+        (SELECT NULLIF(btrim(c.email), '') FROM clients c WHERE c.id = inv.client_id AND c.account_id = inv.account_id) AS "clientEmail",
         CAST((
           SELECT json_build_object('beneficiaryName', b.beneficiary_name, 'bankName', b.bank_name,
             'accountNumberMasked', b.account_number_masked, 'routingNumberMasked', b.routing_number_masked,
@@ -423,10 +457,11 @@ export function getReminderSettings(acc: string, _args: unknown): SqlRequest {
 }
 
 // Offsets travel as comma-separated text because the Data API has no array
-// parameters. Turning reminders on stamps reminders_enabled_at, which keeps the
-// scheduler from reminding invoices that were already overdue at that moment.
+// parameters, and are de-duplicated and sorted in SQL because this runs in
+// APPSYNC_JS (no Set, no sort comparator). Turning reminders on stamps
+// reminders_enabled_at, which keeps the scheduler from reminding invoices that
+// were already overdue at that moment.
 export function putReminderSettings(acc: string, args: { input: { enabled: boolean; offsets: number[] } }): SqlRequest {
-  const offsets = [...new Set(args.input.offsets.map((value) => Math.trunc(value)))].sort((a, b) => a - b);
   return {
     statement: `UPDATE accounts SET
         reminders_enabled_at = CASE
@@ -435,12 +470,15 @@ export function putReminderSettings(acc: string, args: { input: { enabled: boole
           ELSE now()
         END,
         reminders_enabled = :enabled,
-        reminder_offsets = CAST(string_to_array(:offsets, ',') AS int[]),
+        reminder_offsets = (
+          SELECT array_agg(DISTINCT offset_days ORDER BY offset_days)
+          FROM unnest(CAST(string_to_array(:offsets, ',') AS int[])) AS input(offset_days)
+        ),
         updated_at = now()
       WHERE id = :acc
       RETURNING id AS "accountId", reminders_enabled AS enabled, reminders_enabled_at AS "enabledAt",
         array_to_string(reminder_offsets, ',') AS "offsetsCsv"`,
-    params: { acc, enabled: Boolean(args.input.enabled), offsets: offsets.join(",") },
+    params: { acc, enabled: Boolean(args.input.enabled), offsets: args.input.offsets.join(",") },
   };
 }
 

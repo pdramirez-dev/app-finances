@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-// At phone width the page itself must never scroll sideways. Containers that
-// are meant to scroll horizontally (wide tables, the pipeline board) are fine
+// At phone width the page itself must never scroll sideways. 360px leaves a
+// margin below common phones (390px), because Linux CI fonts render wider.
+// Containers that are meant to scroll horizontally (wide tables, the pipeline board) are fine
 // because they scroll inside their own overflow box, not the document.
 const ROUTES = [
   "/dashboard",
@@ -23,10 +24,10 @@ const ROUTES = [
   "/settings/reminders",
 ];
 
-test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+test.use({ viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true });
 
 for (const route of ROUTES) {
-  test(`no horizontal page scroll at 390px: ${route}`, async ({ page }, testInfo) => {
+  test(`no horizontal page scroll at 360px: ${route}`, async ({ page }, testInfo) => {
     await page.goto(route);
     await page.locator("main").waitFor();
     await page.waitForLoadState("networkidle");

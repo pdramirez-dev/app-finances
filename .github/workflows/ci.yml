@@ -60,6 +60,9 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Lint resolvers for the APPSYNC_JS runtime
+        working-directory: infra
+        run: npm run lint:resolvers
       - name: Build AppSync resolvers
         working-directory: infra
         run: npm run build:resolvers

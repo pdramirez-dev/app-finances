@@ -13,18 +13,23 @@
     "cdk:deploy:dev": "cdk deploy AppNexo-Backend-dev AppNexo-Frontend-dev -c stages=dev",
     "cdk:deploy:prod": "cdk deploy AppNexo-Backend-prod AppNexo-Frontend-prod -c stages=prod",
     "db:migrate:aurora": "tsx scripts/apply-migrations-aurora.ts",
-    "backfill:pilot": "tsx scripts/backfill-pilot.ts"
+    "backfill:pilot": "tsx scripts/backfill-pilot.ts",
+    "lint:resolvers": "eslint graphql/resolvers/src"
   },
   "devDependencies": {
+    "@aws-appsync/eslint-plugin": "^2.0.2",
     "@aws-appsync/utils": "^2.1.1",
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "^20.19.17",
+    "@typescript-eslint/parser": "^8.71.2",
     "aws-cdk": "^2.1027.0",
     "aws-cdk-lib": "^2.220.0",
     "constructs": "^10.4.2",
     "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
     "tsx": "^4.21.0",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.71.2",
     "vitest": "^4.1.9"
   },
   "dependencies": {

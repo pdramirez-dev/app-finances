@@ -5,7 +5,7 @@ import {
   putClient, putBankAccount, putAccount,
   putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, getReminderSettings, putReminderSettings, dueReminders, claimScheduledReminder, logManualReminder, completeReminder, listInvoiceReminders, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
-  normalizeMaskedBankValue, decodePageToken, nextPageToken,
+  normalizeMaskedBankValue, isMaskedBankValue, invalidMaskedBankFields, decodePageToken, nextPageToken,
 } from "./sql-builders";
 
 test("listInvoices scopes by claim accountId and ignores args.accountId", () => {
@@ -30,9 +30,10 @@ test("page tokens decode to offsets and reject tampered values", () => {
   expect(decodePageToken(null)).toBe(0);
   expect(decodePageToken("")).toBe(0);
   expect(decodePageToken("50")).toBe(50);
-  expect(() => decodePageToken("abc")).toThrow(/pagination token/i);
-  expect(() => decodePageToken("-25")).toThrow(/pagination token/i);
-  expect(() => decodePageToken("1.5")).toThrow(/pagination token/i);
+  expect(decodePageToken("abc")).toBeNull();
+  expect(decodePageToken("-25")).toBeNull();
+  expect(decodePageToken("1.5")).toBeNull();
+  expect(decodePageToken("1e3")).toBeNull();
 });
 
 test("nextPageToken continues on full pages and stops on short pages", () => {
@@ -87,10 +88,14 @@ test("putBankAccount injects account_id from claim, not from input", () => {
 });
 
 test("bank identifiers must already be safely masked", () => {
-  expect(normalizeMaskedBankValue("****6789")).toBe("****6789");
-  expect(normalizeMaskedBankValue("GB** **** 1234", 6)).toBe("GB** **** 1234");
-  expect(() => normalizeMaskedBankValue("123456789")).toThrow(/must be masked/i);
-  expect(() => normalizeMaskedBankValue("**123456")).toThrow(/final characters/i);
+  expect(normalizeMaskedBankValue(" ****6789 ")).toBe("****6789");
+  expect(isMaskedBankValue("****6789")).toBe(true);
+  expect(isMaskedBankValue("GB** **** 1234", 6)).toBe(true);
+  expect(isMaskedBankValue("•••• 1234")).toBe(true);
+  expect(isMaskedBankValue("123456789")).toBe(false);
+  expect(isMaskedBankValue("**123456")).toBe(false);
+  expect(invalidMaskedBankFields({ accountNumberMasked: "123456789", routingNumberMasked: "•••• 5678", ibanMasked: "" }))
+    .toEqual(["accountNumberMasked"]);
 });
 
 test("putAccount upserts with account id from claim and returns aliased columns", () => {
@@ -379,10 +384,11 @@ test("markInvoiceSent only moves drafts of the caller's account", () => {
   expect(r.statement).toMatch(/WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'/);
 });
 
-test("reminder settings pass offsets as sorted, de-duplicated text for the Data API", () => {
-  const r = putReminderSettings("ACC_A", { input: { enabled: true, offsets: [7, -3, 0, 7, 14.9] } });
-  expect(r.params).toEqual({ acc: "ACC_A", enabled: true, offsets: "-3,0,7,14" });
-  expect(r.statement).toMatch(/CAST\(string_to_array\(:offsets, ','\) AS int\[\]\)/);
+test("reminder settings pass offsets as text and de-duplicate and sort them in SQL", () => {
+  const r = putReminderSettings("ACC_A", { input: { enabled: true, offsets: [7, -3, 0, 7, 14] } });
+  expect(r.params).toEqual({ acc: "ACC_A", enabled: true, offsets: "7,-3,0,7,14" });
+  expect(r.statement).toMatch(/array_agg\(DISTINCT offset_days ORDER BY offset_days\)/);
+  expect(r.statement).toMatch(/unnest\(CAST\(string_to_array\(:offsets, ','\) AS int\[\]\)\)/);
   expect(r.statement).toMatch(/WHEN reminders_enabled THEN reminders_enabled_at\s+ELSE now\(\)/);
   expect(getReminderSettings("ACC_A", { accountId: "ACC_B" }).params).toEqual({ acc: "ACC_A" });
 });
@@ -409,4 +415,13 @@ test("reminder claims and logs are scoped to the row's own account", () => {
   expect(done.statement).toMatch(/WHERE id = :reminderId AND account_id = :acc/);
   expect((done.params.error as string).length).toBe(500);
   expect(listInvoiceReminders("ACC_A", { invoiceId: "INV" }).statement).toMatch(/account_id = :acc/);
+});
+
+test("updateInvoiceFull requires the opened version, bumps it, and freezes the currency once paid", () => {
+  const r = updateInvoiceFull("ACC_A", { invoiceId: "INV1", input: { expectedVersion: 3, currency: "EUR", date: "2026-01-01",
+    weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(r.statement).toMatch(/AND version = :expectedVersion/);
+  expect(r.statement).toMatch(/version = inv\.version \+ 1/);
+  expect(r.statement).toMatch(/upper\(CAST\(:currency AS text\)\) = upper\(invoices\.currency\)\s+OR NOT EXISTS/);
+  expect(r.params).toMatchObject({ expectedVersion: 3, currency: "EUR" });
 });

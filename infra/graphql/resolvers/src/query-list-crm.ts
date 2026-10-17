@@ -30,6 +30,7 @@ export function request(ctx: any) {
   const builder = builders[ctx.info.fieldName];
   if (!builder) util.error(`Unsupported CRM list query: ${ctx.info.fieldName}`, "ResolverConfigurationError");
   const offset = decodePageToken(ctx.args.nextToken);
+  if (offset === null) util.error("Invalid pagination token", "BadRequest");
   const { statement, params } = builder(acc, { ...ctx.args, offset }, userId);
   const variableMap: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) variableMap[`:${key}`] = value;
@@ -41,7 +42,7 @@ export function request(ctx: any) {
 export function response(ctx: any) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
   const rows = toJsonObject(ctx.result)[0] ?? [];
-  const offset = ctx.stash.pageOffset ?? decodePageToken(ctx.args.nextToken);
+  const offset = ctx.stash.pageOffset ?? decodePageToken(ctx.args.nextToken) ?? 0;
   const limit = ctx.stash.pageLimit ?? ctx.args.limit ?? DEFAULT_PAGE_SIZE;
   return { items: rows, nextToken: nextPageToken(offset, limit, rows.length) };
 }

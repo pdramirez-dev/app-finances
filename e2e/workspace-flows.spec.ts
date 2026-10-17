@@ -90,3 +90,25 @@ test("invoices: creating one validates the week number and keeps the typed heade
   await expect(page.getByRole("heading", { level: 1, name: /^Factura #/ })).toBeVisible();
   await expect(page.getByText("Mantenimiento regional").first()).toBeVisible();
 });
+
+test("invoices: a second tab editing the same invoice cannot overwrite the first one's changes", async ({ browser }) => {
+  const context = await browser.newContext();
+  const first = await context.newPage();
+  const second = await context.newPage();
+  const editUrl = "/invoices/20000000-0000-4000-8000-000000000046/edit";
+  await first.goto(editUrl);
+  await second.goto(editUrl);
+
+  await first.getByLabel("Proyecto").fill("Mantenimiento editado en la pestaña 1");
+  await first.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(first).toHaveURL(/\/invoices\/20000000-0000-4000-8000-000000000046$/);
+
+  await second.getByLabel("Proyecto").fill("Cambio de la pestaña 2");
+  await second.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(second.getByRole("alert").filter({ hasText: "cambió mientras la editabas" })).toBeVisible();
+  await expect(second.getByLabel("Proyecto")).toHaveValue("Cambio de la pestaña 2");
+
+  await first.reload();
+  await expect(first.getByText("Mantenimiento editado en la pestaña 1").first()).toBeVisible();
+  await context.close();
+});
