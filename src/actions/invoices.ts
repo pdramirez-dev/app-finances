@@ -10,7 +10,9 @@ import {
   createInvoiceFull,
   deleteInvoice,
   putInvoiceSeries,
+  putReminderSettings,
   sendInvoiceEmail,
+  sendPaymentReminder,
   updateInvoiceFull,
   updateInvoiceStatus,
 } from "@/lib/appsync/invoices";
@@ -291,10 +293,11 @@ function sendInvoiceEmailErrorMessage(error: unknown) {
   return "No se pudo enviar la factura. Inténtalo de nuevo.";
 }
 
-export async function sendInvoiceEmailAction(
+async function deliverFromForm(
   invoiceId: string,
-  _previousState: SendInvoiceEmailFormState,
   formData: FormData,
+  deliver: typeof sendInvoiceEmail,
+  successLabel: string,
 ): Promise<SendInvoiceEmailFormState> {
   await requireAuth();
 
@@ -310,7 +313,7 @@ export async function sendInvoiceEmailAction(
   let sent: Awaited<ReturnType<typeof sendInvoiceEmail>>;
 
   try {
-    sent = await sendInvoiceEmail({ invoiceId, to: result.data.to, message: result.data.message });
+    sent = await deliver({ invoiceId, to: result.data.to, message: result.data.message });
   } catch (error) {
     return { error: sendInvoiceEmailErrorMessage(error) };
   }
@@ -320,7 +323,73 @@ export async function sendInvoiceEmailAction(
 
   const expires = new Intl.DateTimeFormat("es", { dateStyle: "long", timeZone: "UTC" }).format(new Date(sent.linkExpiresAt));
   return {
-    success: `Factura enviada a ${sent.sentTo}. El enlace de descarga es válido hasta el ${expires}.`,
+    success: `${successLabel} a ${sent.sentTo}. El enlace de descarga es válido hasta el ${expires}.`,
     warning: sent.warning ?? undefined,
   };
+}
+
+export async function sendInvoiceEmailAction(
+  invoiceId: string,
+  _previousState: SendInvoiceEmailFormState,
+  formData: FormData,
+): Promise<SendInvoiceEmailFormState> {
+  return deliverFromForm(invoiceId, formData, sendInvoiceEmail, "Factura enviada");
+}
+
+export async function sendPaymentReminderAction(
+  invoiceId: string,
+  _previousState: SendInvoiceEmailFormState,
+  formData: FormData,
+): Promise<SendInvoiceEmailFormState> {
+  return deliverFromForm(invoiceId, formData, sendPaymentReminder, "Recordatorio enviado");
+}
+
+export type ReminderSettingsFormState = {
+  error?: string;
+  success?: string;
+};
+
+const reminderSettingsSchema = z.object({
+  enabled: z.union([z.literal("on"), z.literal("")]).optional().transform((value) => value === "on"),
+  offsets: z.array(z.number({ message: "Usa solo números enteros, por ejemplo -3, 0, 7" })
+    .int("Usa solo números enteros, por ejemplo -3, 0, 7")
+    .min(-30, "Los días van de -30 a 90")
+    .max(90, "Los días van de -30 a 90"))
+    .min(1, "Indica al menos un día de recordatorio")
+    .transform((values) => [...new Set(values)].sort((a, b) => a - b))
+    .refine((values) => values.length <= 6, "Indica como máximo 6 días de recordatorio"),
+});
+
+function parseOffsets(raw: FormDataEntryValue | null) {
+  return String(raw ?? "").split(/[,\s]+/).filter(Boolean).map((value) => (/^-?\d+$/.test(value) ? Number(value) : Number.NaN));
+}
+
+export async function saveReminderSettingsAction(
+  _previousState: ReminderSettingsFormState,
+  formData: FormData,
+): Promise<ReminderSettingsFormState> {
+  await requireAuth();
+
+  const result = reminderSettingsSchema.safeParse({
+    enabled: formData.get("enabled") ?? "",
+    offsets: parseOffsets(formData.get("offsets")),
+  });
+
+  if (!result.success) {
+    return { error: getFirstErrorMessage(result.error) };
+  }
+
+  try {
+    await putReminderSettings(result.data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return {
+      error: /unauthorized|not authorized/i.test(message)
+        ? "Solo los administradores pueden cambiar los recordatorios"
+        : "No se pudieron guardar los recordatorios",
+    };
+  }
+
+  revalidatePath("/settings/reminders");
+  return { success: result.data.enabled ? "Recordatorios activados" : "Recordatorios desactivados" };
 }

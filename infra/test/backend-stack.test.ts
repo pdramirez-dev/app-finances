@@ -163,7 +163,7 @@ test("invoice edits, status changes and series changes are audited after the mem
     };
   }>;
 
-  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull", "putInvoiceSeries", "sendInvoiceEmail"]) {
+  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull", "putInvoiceSeries", "sendInvoiceEmail", "sendPaymentReminder", "putReminderSettings"]) {
     const matches = resolvers.filter((item) =>
       item.Properties.TypeName === "Mutation" && item.Properties.FieldName === fieldName,
     );
@@ -238,4 +238,22 @@ test("invoice emails are only allowed from the configured SES identity", () => {
   configured.hasResourceProperties("AWS::Lambda::Function", {
     Environment: { Variables: Match.objectLike({ INVOICE_EMAIL_FROM: "Facturas <f@pena.example>" }) },
   });
+});
+
+test("payment reminders run once a day without async retries, scoped like the send Lambda", () => {
+  const t = synth({ invoiceEmail: { from: "Facturas <f@pena.example>", sesIdentity: "pena.example" } });
+  const rules = Object.values(t.findResources("AWS::Events::Rule")) as Array<{ Properties: { ScheduleExpression: string; Targets: Array<{ Arn: { "Fn::GetAtt": [string, string] }; RetryPolicy?: { MaximumRetryAttempts: number } }> } }>;
+  expect(rules).toHaveLength(1);
+  expect(rules[0].Properties.ScheduleExpression).toBe("cron(0 14 * * ? *)");
+  expect(rules[0].Properties.Targets).toHaveLength(1);
+  expect(rules[0].Properties.Targets[0].Arn["Fn::GetAtt"][0]).toMatch(/^PaymentRemindersFunction/);
+  expect(rules[0].Properties.Targets[0].RetryPolicy?.MaximumRetryAttempts).toBe(0);
+
+  const eventInvokeConfigs = Object.values(t.findResources("AWS::Lambda::EventInvokeConfig")) as Array<{ Properties: { MaximumRetryAttempts: number } }>;
+  expect(eventInvokeConfigs.map((config) => config.Properties.MaximumRetryAttempts)).toContain(0);
+
+  const actions = actionsFor(t, lambdaRoleRef(t, "PaymentRemindersFunction"));
+  expect(actions.filter((entry) => entry.action.startsWith("ses:")).map((entry) => entry.action)).toEqual(["ses:SendEmail"]);
+  expect(actions.some((entry) => entry.action.startsWith("rds-data:"))).toBe(true);
+  expect(actions.some((entry) => entry.action.startsWith("s3:GetObject"))).toBe(false);
 });

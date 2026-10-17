@@ -2,17 +2,32 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileText } from "lucide-react";
 
-import { deleteInvoiceAction, sendInvoiceEmailAction, updateInvoiceStatusAction } from "@/actions/invoices";
+import {
+  deleteInvoiceAction,
+  sendInvoiceEmailAction,
+  sendPaymentReminderAction,
+  updateInvoiceStatusAction,
+} from "@/actions/invoices";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { SendInvoiceEmailForm } from "@/components/invoices/send-invoice-email-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { getInvoiceById } from "@/lib/appsync/invoices";
+import { getInvoiceById, listInvoiceReminders } from "@/lib/appsync/invoices";
 import { listClients } from "@/lib/appsync/workspace";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { formatInvoiceNumber } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
+
+function reminderOffsetLabel(offsetDays: number) {
+  if (offsetDays === 0) return "el día del vencimiento";
+  const days = Math.abs(offsetDays);
+  return `${days} día${days === 1 ? "" : "s"} ${offsetDays < 0 ? "antes" : "después"} del vencimiento`;
+}
+
+function reminderStatusLabel(status: string) {
+  return status === "SENT" ? "Enviado" : status === "FAILED" ? "Falló" : "Pendiente";
+}
 
 export default async function InvoiceDetailPage({
   params,
@@ -28,9 +43,12 @@ export default async function InvoiceDetailPage({
     notFound();
   }
 
-  const client = invoice.clientId
-    ? (await listClients()).find((item) => item.clientId === invoice.clientId)
-    : undefined;
+  const [client, reminders] = await Promise.all([
+    invoice.clientId
+      ? listClients().then((clients) => clients.find((item) => item.clientId === invoice.clientId))
+      : undefined,
+    listInvoiceReminders(invoice.invoiceId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -108,6 +126,43 @@ export default async function InvoiceDetailPage({
           />
         </CardContent>
       </Card>
+
+      {invoice.status === "SENT" || reminders.length > 0 ? (
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="brand-heading text-xl">Recordatorios de pago</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {invoice.status === "SENT" ? (
+              <SendInvoiceEmailForm
+                kind="reminder"
+                action={sendPaymentReminderAction.bind(null, invoice.invoiceId)}
+                defaultTo={client?.email}
+              />
+            ) : null}
+            {reminders.length ? (
+              <ul className="divide-y rounded-xl border text-sm">
+                {reminders.map((reminder) => (
+                  <li key={reminder.reminderId} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+                    <span className="text-slate-700">
+                      {reminder.kind === "SCHEDULED"
+                        ? `Automático (${reminderOffsetLabel(reminder.offsetDays ?? 0)})`
+                        : "Manual"}{" "}
+                      · {reminder.recipient}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {reminderStatusLabel(reminder.status)} ·{" "}
+                      {new Intl.DateTimeFormat("es", { dateStyle: "medium", timeStyle: "short" }).format(new Date(reminder.createdAt))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">Aún no se han enviado recordatorios para esta factura.</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <InvoicePreview invoice={invoice} />
     </div>

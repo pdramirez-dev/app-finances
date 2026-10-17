@@ -11,8 +11,13 @@ import type {
   ListInvoicesQuery,
   PutInvoiceSeriesInput,
   PutInvoiceSeriesMutation,
+  GetReminderSettingsQuery,
+  ListInvoiceRemindersQuery,
+  PutReminderSettingsInput,
+  PutReminderSettingsMutation,
   SendInvoiceEmailInput,
   SendInvoiceEmailMutation,
+  SendPaymentReminderMutation,
   UpdateInvoiceFullInput,
   UpdateInvoiceFullMutation,
   UpdateInvoiceStatusMutation,
@@ -110,6 +115,20 @@ function demoSeriesState() {
 
 function demoSeriesView(series: DemoInvoiceSeries): DemoInvoiceSeries {
   return { ...series, nextNumber: series.lastNumber + 1, isDefault: demoSeriesState().defaultId === series.seriesId };
+}
+
+function demoReminderState() {
+  const demoGlobal = globalThis as typeof globalThis & {
+    __appNexoDemoReminders?: {
+      settings: GetReminderSettingsQuery["getReminderSettings"];
+      log: ListInvoiceRemindersQuery["listInvoiceReminders"];
+    };
+  };
+  demoGlobal.__appNexoDemoReminders ??= {
+    settings: { accountId: "00000000-0000-4000-8000-000000000001", enabled: false, enabledAt: null, offsets: [-3, 0, 7, 14] },
+    log: [],
+  };
+  return demoGlobal.__appNexoDemoReminders;
 }
 
 function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {
@@ -348,6 +367,56 @@ const SEND_INVOICE_EMAIL_MUTATION = /* GraphQL */ `
   }
 `;
 
+const SEND_PAYMENT_REMINDER_MUTATION = /* GraphQL */ `
+  mutation SendPaymentReminder($input: SendInvoiceEmailInput!) {
+    sendPaymentReminder(input: $input) {
+      invoiceId
+      sentTo
+      linkExpiresAt
+      statusUpdated
+      warning
+    }
+  }
+`;
+
+const GET_REMINDER_SETTINGS_QUERY = /* GraphQL */ `
+  query GetReminderSettings {
+    getReminderSettings {
+      accountId
+      enabled
+      enabledAt
+      offsets
+    }
+  }
+`;
+
+const PUT_REMINDER_SETTINGS_MUTATION = /* GraphQL */ `
+  mutation PutReminderSettings($input: PutReminderSettingsInput!) {
+    putReminderSettings(input: $input) {
+      accountId
+      enabled
+      enabledAt
+      offsets
+    }
+  }
+`;
+
+const LIST_INVOICE_REMINDERS_QUERY = /* GraphQL */ `
+  query ListInvoiceReminders($invoiceId: ID!) {
+    listInvoiceReminders(invoiceId: $invoiceId) {
+      reminderId
+      invoiceId
+      kind
+      offsetDays
+      scheduledFor
+      recipient
+      status
+      createdAt
+      sentAt
+    }
+  }
+`;
+
 const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
   mutation UpdateInvoiceStatus($invoiceId: ID!, $status: InvoiceStatus!) {
     updateInvoiceStatus(invoiceId: $invoiceId, status: $status) {
@@ -449,6 +518,31 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
     if (query.includes("GetInvoice(")) {
       const invoice = demoInvoiceStore().find((item) => item.invoiceId === variables?.invoiceId);
       return { getInvoice: invoice ?? null } as T;
+    }
+    if (query.includes("GetReminderSettings")) return { getReminderSettings: demoReminderState().settings } as T;
+    if (query.includes("PutReminderSettings")) {
+      const state = demoReminderState();
+      const enabled = Boolean(input.enabled);
+      state.settings = {
+        accountId,
+        enabled,
+        enabledAt: enabled ? state.settings.enabledAt ?? now : null,
+        offsets: [...new Set((input.offsets as number[]) ?? [])].sort((a, b) => a - b),
+      };
+      return { putReminderSettings: state.settings } as T;
+    }
+    if (query.includes("ListInvoiceReminders")) {
+      return { listInvoiceReminders: demoReminderState().log.filter((item) => item.invoiceId === variables?.invoiceId) } as T;
+    }
+    if (query.includes("SendPaymentReminder")) {
+      const invoice = demoInvoiceStore().find((item) => item.invoiceId === input.invoiceId);
+      if (!invoice) throw new Error("Factura no encontrada");
+      if (invoice.status !== "SENT") throw new Error("Solo se envían recordatorios de facturas enviadas y no pagadas");
+      demoReminderState().log.unshift({ reminderId: crypto.randomUUID(), invoiceId: invoice.invoiceId, kind: "MANUAL",
+        offsetDays: null, scheduledFor: null, recipient: String(input.to), status: "SENT", createdAt: now, sentAt: now });
+      return { sendPaymentReminder: { invoiceId: invoice.invoiceId, sentTo: String(input.to),
+        linkExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), statusUpdated: false,
+        warning: "Modo demo: no se envió ningún email real" } } as T;
     }
     if (query.includes("SendInvoiceEmail")) {
       // Demo mode does not send anything: it only mirrors the status change.
@@ -667,6 +761,29 @@ export type InvoiceEmailResult = SendInvoiceEmailMutation["sendInvoiceEmail"];
 export async function sendInvoiceEmail(input: SendInvoiceEmailInput): Promise<InvoiceEmailResult> {
   const data = await appsyncRequest<SendInvoiceEmailMutation>(SEND_INVOICE_EMAIL_MUTATION, { input });
   return data.sendInvoiceEmail;
+}
+
+export async function sendPaymentReminder(input: SendInvoiceEmailInput): Promise<InvoiceEmailResult> {
+  const data = await appsyncRequest<SendPaymentReminderMutation>(SEND_PAYMENT_REMINDER_MUTATION, { input });
+  return data.sendPaymentReminder;
+}
+
+export type ReminderSettings = GetReminderSettingsQuery["getReminderSettings"];
+export type InvoiceReminder = ListInvoiceRemindersQuery["listInvoiceReminders"][number];
+
+export async function getReminderSettings(): Promise<ReminderSettings> {
+  const data = await appsyncRequest<GetReminderSettingsQuery>(GET_REMINDER_SETTINGS_QUERY);
+  return data.getReminderSettings;
+}
+
+export async function putReminderSettings(input: PutReminderSettingsInput): Promise<ReminderSettings> {
+  const data = await appsyncRequest<PutReminderSettingsMutation>(PUT_REMINDER_SETTINGS_MUTATION, { input });
+  return data.putReminderSettings;
+}
+
+export async function listInvoiceReminders(invoiceId: string): Promise<InvoiceReminder[]> {
+  const data = await appsyncRequest<ListInvoiceRemindersQuery>(LIST_INVOICE_REMINDERS_QUERY, { invoiceId });
+  return data.listInvoiceReminders;
 }
 
 export async function updateInvoiceStatus(

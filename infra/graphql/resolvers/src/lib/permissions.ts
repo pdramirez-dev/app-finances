@@ -2,6 +2,7 @@ export const ADMIN_ONLY_FIELDS = [
   "putAccount",
   "putBankAccount",
   "putInvoiceSeries",
+  "putReminderSettings",
   "deleteClient",
   "deleteInvoice",
   "deleteInvoiceSection",

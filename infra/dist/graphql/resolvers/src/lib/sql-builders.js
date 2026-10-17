@@ -27,6 +27,13 @@ exports.listInvoiceSeries = listInvoiceSeries;
 exports.putInvoiceSeries = putInvoiceSeries;
 exports.invoiceDocument = invoiceDocument;
 exports.markInvoiceSent = markInvoiceSent;
+exports.getReminderSettings = getReminderSettings;
+exports.putReminderSettings = putReminderSettings;
+exports.dueReminders = dueReminders;
+exports.claimScheduledReminder = claimScheduledReminder;
+exports.logManualReminder = logManualReminder;
+exports.completeReminder = completeReminder;
+exports.listInvoiceReminders = listInvoiceReminders;
 exports.putInvoiceSection = putInvoiceSection;
 exports.deleteInvoiceSection = deleteInvoiceSection;
 exports.putInvoiceLineItem = putInvoiceLineItem;
@@ -396,6 +403,12 @@ function putInvoiceSeries(acc, args) {
             isDefault: i.isDefault ?? false, archived: i.archived ?? false },
     };
 }
+// Registered, non-voided payments count against the balance even before they
+// are reconciled, so a client who already paid is never told they owe.
+function nonVoidedPaymentsSum(invoiceAlias) {
+    return `COALESCE((SELECT sum(p.amount) FROM payments p
+    WHERE p.account_id = ${invoiceAlias}.account_id AND p.invoice_id = ${invoiceAlias}.id AND p.status <> 'VOIDED'), 0)`;
+}
 // Everything needed to render and email one invoice, in a single statement.
 // Sections, line items and the latest bank account come back as JSON text.
 function invoiceDocument(acc, args) {
@@ -403,8 +416,11 @@ function invoiceDocument(acc, args) {
         statement: `SELECT inv.id AS "invoiceId", inv.status, ${invoiceNumberLabel("inv")} AS "invoiceLabel",
         inv.date, inv.due_date AS "dueDate", inv.week_number AS "weekNumber", inv.bill_to_name AS "billToName",
         inv.bill_to_address AS "billToAddress", inv.project, inv.currency, inv.notes, inv.grand_total AS "grandTotal",
+        inv.grand_total - ${nonVoidedPaymentsSum("inv")} AS "balanceDue",
         a.display_name AS "issuerName", a.legal_name AS "issuerLegalName", a.tax_id AS "issuerTaxId",
         a.address AS "issuerAddress", a.email AS "issuerEmail", a.phone AS "issuerPhone",
+        a.reminders_enabled AS "remindersEnabled",
+        (SELECT NULLIF(btrim(c.email), '') FROM clients c WHERE c.id = inv.client_id AND c.account_id = inv.account_id) AS "clientEmail",
         CAST((
           SELECT json_build_object('beneficiaryName', b.beneficiary_name, 'bankName', b.bank_name,
             'accountNumberMasked', b.account_number_masked, 'routingNumberMasked', b.routing_number_masked,
@@ -430,6 +446,116 @@ function markInvoiceSent(acc, args) {
         statement: `UPDATE invoices SET status = 'SENT', updated_at = now()
       WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'
       RETURNING id AS "invoiceId", status`,
+        params: { invoiceId: args.invoiceId, acc },
+    };
+}
+function getReminderSettings(acc, _args) {
+    return {
+        statement: `SELECT id AS "accountId", reminders_enabled AS enabled, reminders_enabled_at AS "enabledAt",
+        array_to_string(reminder_offsets, ',') AS "offsetsCsv"
+      FROM accounts WHERE id = :acc`,
+        params: { acc },
+    };
+}
+// Offsets travel as comma-separated text because the Data API has no array
+// parameters, and are de-duplicated and sorted in SQL because this runs in
+// APPSYNC_JS (no Set, no sort comparator). Turning reminders on stamps
+// reminders_enabled_at, which keeps the scheduler from reminding invoices that
+// were already overdue at that moment.
+function putReminderSettings(acc, args) {
+    return {
+        statement: `UPDATE accounts SET
+        reminders_enabled_at = CASE
+          WHEN NOT :enabled THEN NULL
+          WHEN reminders_enabled THEN reminders_enabled_at
+          ELSE now()
+        END,
+        reminders_enabled = :enabled,
+        reminder_offsets = (
+          SELECT array_agg(DISTINCT offset_days ORDER BY offset_days)
+          FROM unnest(CAST(string_to_array(:offsets, ',') AS int[])) AS input(offset_days)
+        ),
+        updated_at = now()
+      WHERE id = :acc
+      RETURNING id AS "accountId", reminders_enabled AS enabled, reminders_enabled_at AS "enabledAt",
+        array_to_string(reminder_offsets, ',') AS "offsetsCsv"`,
+        params: { acc, enabled: Boolean(args.input.enabled), offsets: args.input.offsets.join(",") },
+    };
+}
+/**
+ * The only query that spans accounts: invoices with a scheduled reminder due
+ * today. Every later step uses the row's own accountId. At most one offset per
+ * invoice (the latest reached), only within a short window, never for dates
+ * before the account opted in, and never soon after another reminder.
+ */
+function dueReminders(args) {
+    return {
+        statement: `SELECT DISTINCT ON (inv.id)
+        inv.id AS "invoiceId", inv.account_id AS "accountId", NULLIF(btrim(c.email), '') AS recipient,
+        o.offset_days AS "offsetDays", CAST(inv.due_date + o.offset_days AS text) AS "scheduledFor"
+      FROM invoices inv
+      JOIN accounts a ON a.id = inv.account_id
+      LEFT JOIN clients c ON c.id = inv.client_id AND c.account_id = inv.account_id
+      CROSS JOIN LATERAL unnest(a.reminder_offsets) AS o(offset_days)
+      WHERE a.reminders_enabled
+        AND inv.status = 'SENT'
+        AND inv.due_date IS NOT NULL
+        AND inv.due_date + o.offset_days <= CAST(:today AS date)
+        AND inv.due_date + o.offset_days > CAST(:today AS date) - CAST(:windowDays AS int)
+        AND inv.due_date + o.offset_days >= CAST(a.reminders_enabled_at AS date)
+        AND inv.grand_total > ${nonVoidedPaymentsSum("inv")}
+        AND NOT EXISTS (
+          SELECT 1 FROM invoice_reminders r
+          WHERE r.invoice_id = inv.id AND r.kind = 'SCHEDULED' AND r.offset_days = o.offset_days
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM invoice_reminders r
+          WHERE r.invoice_id = inv.id AND r.created_at > CAST(:minGapSince AS timestamptz)
+        )
+      ORDER BY inv.id, o.offset_days DESC
+      LIMIT :lim`,
+        params: { today: args.today, windowDays: args.windowDays, minGapSince: args.minGapSince, lim: args.limit },
+    };
+}
+// Claims a scheduled reminder before sending. Exactly one caller gets a row
+// back, so EventBridge or Lambda retries can never email the same reminder twice.
+function claimScheduledReminder(acc, args) {
+    return {
+        statement: `INSERT INTO invoice_reminders (account_id, invoice_id, kind, offset_days, scheduled_for, recipient)
+      SELECT inv.account_id, inv.id, 'SCHEDULED', :offsetDays, CAST(:scheduledFor AS date), :recipient
+      FROM invoices inv WHERE inv.id = :invoiceId AND inv.account_id = :acc
+      ON CONFLICT (invoice_id, offset_days) WHERE kind = 'SCHEDULED' DO NOTHING
+      RETURNING id AS "reminderId"`,
+        params: { acc, invoiceId: args.invoiceId, offsetDays: args.offsetDays, scheduledFor: args.scheduledFor,
+            recipient: args.recipient },
+    };
+}
+function logManualReminder(acc, args) {
+    return {
+        statement: `INSERT INTO invoice_reminders (account_id, invoice_id, kind, recipient)
+      SELECT inv.account_id, inv.id, 'MANUAL', :recipient
+      FROM invoices inv WHERE inv.id = :invoiceId AND inv.account_id = :acc
+      RETURNING id AS "reminderId"`,
+        params: { acc, invoiceId: args.invoiceId, recipient: args.recipient },
+    };
+}
+function completeReminder(acc, args) {
+    return {
+        statement: `UPDATE invoice_reminders SET
+        status = CASE WHEN :sent THEN 'SENT' ELSE 'FAILED' END,
+        sent_at = CASE WHEN :sent THEN now() ELSE NULL END,
+        error = :error
+      WHERE id = :reminderId AND account_id = :acc
+      RETURNING id AS "reminderId", status`,
+        params: { acc, reminderId: args.reminderId, sent: args.sent, error: args.error ? args.error.slice(0, 500) : null },
+    };
+}
+function listInvoiceReminders(acc, args) {
+    return {
+        statement: `SELECT id AS "reminderId", invoice_id AS "invoiceId", kind, offset_days AS "offsetDays",
+        CAST(scheduled_for AS text) AS "scheduledFor", recipient, status, created_at AS "createdAt", sent_at AS "sentAt"
+      FROM invoice_reminders WHERE invoice_id = :invoiceId AND account_id = :acc
+      ORDER BY created_at DESC, id DESC LIMIT 50`,
         params: { invoiceId: args.invoiceId, acc },
     };
 }

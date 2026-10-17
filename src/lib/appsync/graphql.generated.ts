@@ -211,6 +211,11 @@ export type PutProjectInput = {
   teamUserIds?: Array<string | number> | null | undefined;
 };
 
+export type PutReminderSettingsInput = {
+  enabled: boolean;
+  offsets: Array<number>;
+};
+
 export type PutTaskInput = {
   clientId?: string | number | null | undefined;
   completedAt?: string | null | undefined;
@@ -492,6 +497,32 @@ export type SendInvoiceEmailMutationVariables = Exact<{
 
 
 export type SendInvoiceEmailMutation = { sendInvoiceEmail: { invoiceId: string, sentTo: string, linkExpiresAt: string, statusUpdated: boolean, warning: string | null } };
+
+export type SendPaymentReminderMutationVariables = Exact<{
+  input: SendInvoiceEmailInput;
+}>;
+
+
+export type SendPaymentReminderMutation = { sendPaymentReminder: { invoiceId: string, sentTo: string, linkExpiresAt: string, statusUpdated: boolean, warning: string | null } };
+
+export type GetReminderSettingsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type GetReminderSettingsQuery = { getReminderSettings: { accountId: string, enabled: boolean, enabledAt: string | null, offsets: Array<number> } };
+
+export type PutReminderSettingsMutationVariables = Exact<{
+  input: PutReminderSettingsInput;
+}>;
+
+
+export type PutReminderSettingsMutation = { putReminderSettings: { accountId: string, enabled: boolean, enabledAt: string | null, offsets: Array<number> } };
+
+export type ListInvoiceRemindersQueryVariables = Exact<{
+  invoiceId: string | number;
+}>;
+
+
+export type ListInvoiceRemindersQuery = { listInvoiceReminders: Array<{ reminderId: string, invoiceId: string, kind: string, offsetDays: number | null, scheduledFor: string | null, recipient: string, status: string, createdAt: string, sentAt: string | null }> };
 
 export type UpdateInvoiceStatusMutationVariables = Exact<{
   invoiceId: string | number;

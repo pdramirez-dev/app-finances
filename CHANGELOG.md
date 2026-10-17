@@ -6,6 +6,7 @@ Todos los cambios importantes del proyecto se documentan en este archivo.
 
 ### Added
 
+- Recordatorios de pago: envío diario automático (opt-in por cuenta, días configurables respecto al vencimiento, sin recordatorios atrasados al activarlos, deduplicados con reserva previa) y recordatorio manual desde la factura con historial. Migración `0006_payment_reminders`.
 - Envío de facturas por email: PDF generado en el servidor (pdf-lib) y guardado en S3; el email lleva un enlace firmado (30 días) que redirige a una URL prefirmada de S3 de 5 minutos. Los borradores pasan a Enviada y cada envío queda auditado.
 - Numeración de facturas por serie: series con código propio (p. ej. `A-0001`), número inicial configurable, serie predeterminada por cuenta y archivado. Las facturas sin serie conservan la numeración general (migración `0005_invoice_series`).
 - Edición de facturas existentes (`updateInvoiceFull`): reemplaza datos, secciones y conceptos en una sola sentencia atómica, conserva número y estado, bloquea facturas pagadas y queda auditada.

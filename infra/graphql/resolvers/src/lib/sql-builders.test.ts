@@ -3,7 +3,7 @@ import {
   listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice, updateInvoiceStatus,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
   putClient, putBankAccount, putAccount,
-  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, getReminderSettings, putReminderSettings, dueReminders, claimScheduledReminder, logManualReminder, completeReminder, listInvoiceReminders, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
   normalizeMaskedBankValue, isMaskedBankValue, invalidMaskedBankFields, decodePageToken, nextPageToken,
 } from "./sql-builders";
@@ -382,6 +382,39 @@ test("markInvoiceSent only moves drafts of the caller's account", () => {
   const r = markInvoiceSent("ACC_A", { invoiceId: "INV1" });
   expect(r.statement).toMatch(/SET status = 'SENT'/);
   expect(r.statement).toMatch(/WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'/);
+});
+
+test("reminder settings pass offsets as text and de-duplicate and sort them in SQL", () => {
+  const r = putReminderSettings("ACC_A", { input: { enabled: true, offsets: [7, -3, 0, 7, 14] } });
+  expect(r.params).toEqual({ acc: "ACC_A", enabled: true, offsets: "7,-3,0,7,14" });
+  expect(r.statement).toMatch(/array_agg\(DISTINCT offset_days ORDER BY offset_days\)/);
+  expect(r.statement).toMatch(/unnest\(CAST\(string_to_array\(:offsets, ','\) AS int\[\]\)\)/);
+  expect(r.statement).toMatch(/WHEN reminders_enabled THEN reminders_enabled_at\s+ELSE now\(\)/);
+  expect(getReminderSettings("ACC_A", { accountId: "ACC_B" }).params).toEqual({ acc: "ACC_A" });
+});
+
+test("dueReminders only selects opted-in, sent, unpaid invoices inside the window", () => {
+  const r = dueReminders({ today: "2026-10-16", windowDays: 3, minGapSince: "2026-10-14T00:00:00Z", limit: 100 });
+  for (const clause of [
+    /a\.reminders_enabled\b/, /inv\.status = 'SENT'/, /inv\.due_date \+ o\.offset_days <= CAST\(:today AS date\)/,
+    /> CAST\(:today AS date\) - CAST\(:windowDays AS int\)/, />= CAST\(a\.reminders_enabled_at AS date\)/,
+    /inv\.grand_total > COALESCE\(\(SELECT sum\(p\.amount\) FROM payments p/, /p\.status <> 'VOIDED'/,
+    /r\.created_at > CAST\(:minGapSince AS timestamptz\)/, /DISTINCT ON \(inv\.id\)/, /ORDER BY inv\.id, o\.offset_days DESC/,
+  ]) {
+    expect(r.statement).toMatch(clause);
+  }
+  expect(r.statement).not.toMatch(/CURRENT_DATE|now\(\)|::/);
+});
+
+test("reminder claims and logs are scoped to the row's own account", () => {
+  const claim = claimScheduledReminder("ACC_A", { invoiceId: "INV", offsetDays: 7, scheduledFor: "2026-10-16", recipient: "a@b.co" });
+  expect(claim.statement).toMatch(/ON CONFLICT \(invoice_id, offset_days\) WHERE kind = 'SCHEDULED' DO NOTHING/);
+  expect(claim.statement).toMatch(/WHERE inv\.id = :invoiceId AND inv\.account_id = :acc/);
+  expect(logManualReminder("ACC_A", { invoiceId: "INV", recipient: "a@b.co" }).statement).toMatch(/inv\.account_id = :acc/);
+  const done = completeReminder("ACC_A", { reminderId: "R", sent: false, error: "x".repeat(900) });
+  expect(done.statement).toMatch(/WHERE id = :reminderId AND account_id = :acc/);
+  expect((done.params.error as string).length).toBe(500);
+  expect(listInvoiceReminders("ACC_A", { invoiceId: "INV" }).statement).toMatch(/account_id = :acc/);
 });
 
 test("updateInvoiceFull requires the opened version, bumps it, and freezes the currency once paid", () => {

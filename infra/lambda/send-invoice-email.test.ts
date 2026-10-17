@@ -10,16 +10,22 @@ const NOW = new Date("2026-10-16T12:00:00Z");
 const documentRow = (status = "DRAFT") => ({
   invoiceId: "INV", status, invoiceLabel: "A-0050", date: "2026-10-16", dueDate: "2026-11-15", weekNumber: 42,
   billToName: "Cliente <b>", billToAddress: "1 Main St", project: "P", currency: "USD", notes: null, grandTotal: "1500.00",
+  balanceDue: "1000.00",
   issuerName: "Nexo Demo", issuerLegalName: null, issuerEmail: "billing@nexo.example",
   bankJson: null, sectionsJson: JSON.stringify([{ title: "S", total: 1500, lineItems: [{ description: "d", quantity: 1, amount: 1500 }] }]),
 });
 
 function fakes(overrides: Partial<SendInvoiceEmailDeps> = {}, status = "DRAFT") {
-  const calls = { sql: [] as string[], puts: [] as Array<{ key: string; body: Uint8Array; filename: string }>, emails: [] as any[] };
+  const calls = { sql: [] as string[], puts: [] as Array<{ key: string; body: Uint8Array; filename: string }>, emails: [] as any[], completions: [] as boolean[] };
   const deps: SendInvoiceEmailDeps = {
     async runSql(request) {
       calls.sql.push(request.statement.trim().split(/\s+/)[0]);
       expect(request.params.acc).toBe("ACC");
+      if (request.statement.includes("INSERT INTO invoice_reminders")) return [{ reminderId: "R1" }];
+      if (request.statement.includes("UPDATE invoice_reminders")) {
+        calls.completions.push(request.params.sent as boolean);
+        return [{ reminderId: "R1" }];
+      }
       return request.statement.includes("UPDATE invoices") ? [{ invoiceId: "INV", status: "SENT" }] : [documentRow(status)];
     },
     async putPdf(key, body, filename) { calls.puts.push({ key, body, filename }); },
@@ -109,4 +115,37 @@ test("the download link redirects to a short-lived S3 URL and rejects expired or
   expect((await download(NOW.getTime())(request(`${token}x`))).statusCode).toBe(410);
   expect((await download(NOW.getTime())(request(token, "POST"))).statusCode).toBe(405);
   expect(presigned).toHaveLength(1);
+});
+
+test("a manual reminder needs a sent invoice with a balance and is logged as sent", async () => {
+  const { deps, calls } = fakes({}, "SENT");
+  const result = await createSendInvoiceEmailHandler(deps)({ ...event, kind: "REMINDER" });
+  expect(result).toMatchObject({ statusUpdated: false, warning: null });
+  expect(calls.sql).toEqual(["SELECT", "INSERT", "UPDATE"]);
+  expect(calls.completions).toEqual([true]);
+  const email = calls.emails[0];
+  expect(email.subject).toBe("Recordatorio de pago: factura A-0050 de Nexo Demo");
+  expect(email.text).toContain("Saldo pendiente: $1,000.00.");
+  expect(email.text).toContain("vence el 11/15/2026 (en 30 días)");
+  expect(email.text).toContain("Si ya realizaste el pago");
+
+  for (const status of ["DRAFT", "PAID"]) {
+    const other = fakes({}, status);
+    await expect(createSendInvoiceEmailHandler(other.deps)({ ...event, kind: "REMINDER" })).rejects.toThrow(/enviadas y no pagadas/);
+    expect(other.calls.emails).toHaveLength(0);
+  }
+});
+
+test("a manual reminder whose email fails is logged as failed and the error surfaces", async () => {
+  const { deps, calls } = fakes({ async sendEmail() { throw new Error("SES rejected"); } }, "SENT");
+  await expect(createSendInvoiceEmailHandler(deps)({ ...event, kind: "REMINDER" })).rejects.toThrow("SES rejected");
+  expect(calls.completions).toEqual([false]);
+});
+
+test("no reminder is sent when nothing is owed", async () => {
+  const { deps, calls } = fakes({}, "SENT");
+  const runSql = deps.runSql;
+  deps.runSql = async (request) => (await runSql(request)).map((row) => ({ ...row, balanceDue: "0.00" }));
+  await expect(createSendInvoiceEmailHandler(deps)({ ...event, kind: "REMINDER" })).rejects.toThrow(/saldo pendiente/);
+  expect(calls.emails).toHaveLength(0);
 });
