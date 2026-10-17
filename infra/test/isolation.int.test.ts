@@ -3,7 +3,7 @@ import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
 import {
   listClients, getClient, getInvoice,
-  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
@@ -38,7 +38,7 @@ beforeAll(async () => {
   await runMigrations(URL);
   db = new Client({ connectionString: URL });
   await db.connect();
-  await db.query("DELETE FROM payments; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; UPDATE accounts SET default_invoice_series_id = NULL; DELETE FROM invoice_series; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
+  await db.query("DELETE FROM payments; DELETE FROM bank_accounts; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; UPDATE accounts SET default_invoice_series_id = NULL; DELETE FROM invoice_series; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
   await db.query("INSERT INTO accounts (id, type, display_name) VALUES ('11111111-1111-1111-1111-111111111111','COMPANY','A'),('22222222-2222-2222-2222-222222222222','COMPANY','B')");
   await db.query("INSERT INTO clients (id, account_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','Cliente A'),('bbbbbbbb-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','Cliente B')");
   await db.query(`INSERT INTO invoices (id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, grand_total) VALUES ('cccccccc-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','bbbbbbbb-0000-0000-0000-000000000001',1,'2024-01-01',1,'Cliente B','123 B Street','Project B',1000.00)`);
@@ -343,4 +343,42 @@ dbTest("putInvoiceSeries cannot update another account's series", async () => {
   expect(await run(putInvoiceSeries(ACC_A, { input: { seriesId: foreign.seriesId, name: "Hijacked", isDefault: true } }))).toHaveLength(0);
   const still = await db.query("SELECT name FROM invoice_series WHERE id = $1", [foreign.seriesId]);
   expect(still.rows[0].name).toBe("De B");
+});
+
+dbTest("invoiceDocument returns the series label, ordered sections and items, issuer and bank", async () => {
+  const [series] = await run(putInvoiceSeries(ACC_A, { input: { code: "DOC", name: "Docs", startNumber: 7 } }));
+  const created = (await run(createInvoiceFull(ACC_A, { input: {
+    seriesId: series.seriesId, date: "2026-05-01", dueDate: "2026-05-31", weekNumber: 18, billToName: "Doc Client",
+    billToAddress: "Addr", project: "P", grandTotal: 35, notes: "Gracias",
+    sections: [
+      { title: "Uno", total: 30, lineItems: [
+        { description: "a", quantity: 1, amount: 10 }, { description: "b", quantity: 2, amount: 10 },
+      ] },
+      { title: "Dos", total: 5, lineItems: [{ description: "c", quantity: 0.5, amount: 10 }] },
+    ],
+  } } as any)))[0];
+  await db.query(
+    `INSERT INTO bank_accounts (account_id, beneficiary_name, bank_name, account_number_masked, currency)
+     VALUES ($1, 'Benef', 'Banco', '•••• 1234', 'USD')`,
+    [ACC_A],
+  );
+
+  const rows = await run(invoiceDocument(ACC_A, { invoiceId: created.invoiceId }));
+  expect(rows).toHaveLength(1);
+  const doc = rows[0];
+  expect(doc).toMatchObject({ invoiceLabel: "DOC-0007", status: "DRAFT", billToName: "Doc Client", issuerName: "A", notes: "Gracias" });
+  expect(JSON.parse(doc.bankJson)).toMatchObject({ bankName: "Banco", accountNumberMasked: "•••• 1234" });
+  const sections = JSON.parse(doc.sectionsJson);
+  expect(sections.map((section: any) => section.title)).toEqual(["Uno", "Dos"]);
+  expect(sections[0].lineItems.map((item: any) => [item.description, Number(item.quantity), Number(item.amount)]))
+    .toEqual([["a", 1, 10], ["b", 2, 10]]);
+
+  expect(await run(invoiceDocument(ACC_B, { invoiceId: created.invoiceId }))).toHaveLength(0);
+});
+
+dbTest("markInvoiceSent moves a draft once and never touches other accounts", async () => {
+  const created = await createEditableInvoice();
+  expect(await run(markInvoiceSent(ACC_B, { invoiceId: created.invoiceId }))).toHaveLength(0);
+  expect(await run(markInvoiceSent(ACC_A, { invoiceId: created.invoiceId }))).toEqual([{ invoiceId: created.invoiceId, status: "SENT" }]);
+  expect(await run(markInvoiceSent(ACC_A, { invoiceId: created.invoiceId }))).toHaveLength(0);
 });

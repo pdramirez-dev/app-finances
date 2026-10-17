@@ -11,6 +11,8 @@ import type {
   ListInvoicesQuery,
   PutInvoiceSeriesInput,
   PutInvoiceSeriesMutation,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailMutation,
   UpdateInvoiceFullInput,
   UpdateInvoiceFullMutation,
   UpdateInvoiceStatusMutation,
@@ -328,6 +330,18 @@ const PUT_INVOICE_SERIES_MUTATION = /* GraphQL */ `
   }
 `;
 
+const SEND_INVOICE_EMAIL_MUTATION = /* GraphQL */ `
+  mutation SendInvoiceEmail($input: SendInvoiceEmailInput!) {
+    sendInvoiceEmail(input: $input) {
+      invoiceId
+      sentTo
+      linkExpiresAt
+      statusUpdated
+      warning
+    }
+  }
+`;
+
 const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
   mutation UpdateInvoiceStatus($invoiceId: ID!, $status: InvoiceStatus!) {
     updateInvoiceStatus(invoiceId: $invoiceId, status: $status) {
@@ -427,6 +441,20 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
     if (query.includes("GetInvoice(")) {
       const invoice = demoInvoiceStore().find((item) => item.invoiceId === variables?.invoiceId);
       return { getInvoice: invoice ?? null } as T;
+    }
+    if (query.includes("SendInvoiceEmail")) {
+      // Demo mode does not send anything: it only mirrors the status change.
+      const invoice = demoInvoiceStore().find((item) => item.invoiceId === input.invoiceId);
+      if (!invoice) throw new Error("Factura no encontrada");
+      const statusUpdated = invoice.status === "DRAFT";
+      if (statusUpdated) invoice.status = "SENT";
+      return { sendInvoiceEmail: {
+        invoiceId: invoice.invoiceId,
+        sentTo: String(input.to),
+        linkExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        statusUpdated,
+        warning: "Modo demo: no se envió ningún email real",
+      } } as T;
     }
     if (query.includes("ListInvoiceSeries")) {
       return { listInvoiceSeries: demoSeriesState().series.map(demoSeriesView) } as T;
@@ -623,6 +651,13 @@ export async function listInvoiceSeries(): Promise<InvoiceSeries[]> {
 export async function putInvoiceSeries(input: PutInvoiceSeriesInput): Promise<InvoiceSeries> {
   const data = await appsyncRequest<PutInvoiceSeriesMutation>(PUT_INVOICE_SERIES_MUTATION, { input });
   return normalizeSeries(data.putInvoiceSeries);
+}
+
+export type InvoiceEmailResult = SendInvoiceEmailMutation["sendInvoiceEmail"];
+
+export async function sendInvoiceEmail(input: SendInvoiceEmailInput): Promise<InvoiceEmailResult> {
+  const data = await appsyncRequest<SendInvoiceEmailMutation>(SEND_INVOICE_EMAIL_MUTATION, { input });
+  return data.sendInvoiceEmail;
 }
 
 export async function updateInvoiceStatus(

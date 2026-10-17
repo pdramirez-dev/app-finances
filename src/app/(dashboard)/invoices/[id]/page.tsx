@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileText } from "lucide-react";
 
-import { deleteInvoiceAction, updateInvoiceStatusAction } from "@/actions/invoices";
+import { deleteInvoiceAction, sendInvoiceEmailAction, updateInvoiceStatusAction } from "@/actions/invoices";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
+import { SendInvoiceEmailForm } from "@/components/invoices/send-invoice-email-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { getInvoiceById } from "@/lib/appsync/invoices";
+import { listClients } from "@/lib/appsync/workspace";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { formatInvoiceNumber } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
@@ -25,6 +27,10 @@ export default async function InvoiceDetailPage({
   if (!invoice) {
     notFound();
   }
+
+  const client = invoice.clientId
+    ? (await listClients()).find((item) => item.clientId === invoice.clientId)
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -64,6 +70,7 @@ export default async function InvoiceDetailPage({
             <div className="space-y-2">
               <Label htmlFor="status">Estado</Label>
               <select
+                key={invoice.status}
                 id="status"
                 name="status"
                 defaultValue={invoice.status}
@@ -87,6 +94,18 @@ export default async function InvoiceDetailPage({
               Eliminar factura
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle className="brand-heading text-xl">Enviar al cliente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SendInvoiceEmailForm
+            action={sendInvoiceEmailAction.bind(null, invoice.invoiceId)}
+            defaultTo={client?.email}
+          />
         </CardContent>
       </Card>
 

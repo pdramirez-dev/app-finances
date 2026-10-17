@@ -3,7 +3,7 @@ import {
   listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice, updateInvoiceStatus,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
   putClient, putBankAccount, putAccount,
-  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, invoiceDocument, markInvoiceSent, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
   normalizeMaskedBankValue, decodePageToken, nextPageToken,
 } from "./sql-builders";
@@ -361,4 +361,20 @@ test("putInvoiceSeries creates with a start number and only renames, archives or
 
   const updated = putInvoiceSeries("ACC_A", { input: { seriesId: "S1", name: "Renamed", archived: true } } as any);
   expect(updated.params).toMatchObject({ seriesId: "S1", code: null, lastNumber: 0, isDefault: false, archived: true });
+});
+
+test("invoiceDocument loads one tenant invoice with its sections, items, issuer and bank in one statement", () => {
+  const r = invoiceDocument("ACC_A", { invoiceId: "INV1", accountId: "ACC_B" } as any);
+  expect(r.statement).toMatch(/WHERE inv\.id = :invoiceId AND inv\.account_id = :acc/);
+  expect(r.statement).toMatch(/FROM bank_accounts b WHERE b\.account_id = inv\.account_id/);
+  expect(r.statement).toMatch(/AS "sectionsJson"/);
+  expect(r.statement).toMatch(/CASE WHEN inv\.series_code = ''/);
+  expect(r.statement).not.toMatch(/::/);
+  expect(r.params).toEqual({ invoiceId: "INV1", acc: "ACC_A" });
+});
+
+test("markInvoiceSent only moves drafts of the caller's account", () => {
+  const r = markInvoiceSent("ACC_A", { invoiceId: "INV1" });
+  expect(r.statement).toMatch(/SET status = 'SENT'/);
+  expect(r.statement).toMatch(/WHERE id = :invoiceId AND account_id = :acc AND status = 'DRAFT'/);
 });
