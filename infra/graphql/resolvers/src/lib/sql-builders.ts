@@ -195,11 +195,10 @@ export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest 
   };
 }
 
-export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest {
-  const i = args.input;
-  // Positions derive from array order so the section/item JSON is self-describing
-  // and the line-item join below can rely on unique section positions.
-  const sections = (i.sections ?? []).map((section: any, sectionIndex: number) => ({
+// Positions derive from array order so the section/item JSON is self-describing
+// and the line-item join can rely on unique section positions.
+function serializeInvoiceSections(sections: any[] | undefined): string {
+  return JSON.stringify((sections ?? []).map((section: any, sectionIndex: number) => ({
     title: section.title,
     position: sectionIndex,
     total: section.total,
@@ -209,7 +208,29 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
       amount: item.amount,
       position: itemIndex,
     })),
-  }));
+  })));
+}
+
+const INVOICE_SECTIONS_INSERT_CTES = (invoiceCte: string) => `section_input AS (
+        SELECT s.title, s.position, s.total, s.items
+        FROM jsonb_to_recordset(CAST(:sections AS jsonb))
+          AS s(title text, position int, total numeric, items jsonb)
+      ), new_sections AS (
+        INSERT INTO invoice_sections (invoice_id, title, position, total)
+        SELECT ni.id, s.title, s.position, s.total FROM section_input s CROSS JOIN ${invoiceCte} ni
+        RETURNING id, position
+      ), new_line_items AS (
+        INSERT INTO invoice_line_items (section_id, description, quantity, amount, position)
+        SELECT ns.id, li.description, li.quantity, li.amount, li.position
+        FROM section_input s
+        JOIN new_sections ns ON ns.position = s.position
+        CROSS JOIN LATERAL jsonb_to_recordset(s.items)
+          AS li(description text, quantity numeric, amount numeric, position int)
+        RETURNING id
+      )`;
+
+export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
   return {
     statement: `WITH valid_client AS (
         SELECT CAST(:clientId AS uuid) AS id
@@ -227,29 +248,48 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
         SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
           :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
         RETURNING *
-      ), section_input AS (
-        SELECT s.title, s.position, s.total, s.items
-        FROM jsonb_to_recordset(CAST(:sections AS jsonb))
-          AS s(title text, position int, total numeric, items jsonb)
-      ), new_sections AS (
-        INSERT INTO invoice_sections (invoice_id, title, position, total)
-        SELECT ni.id, s.title, s.position, s.total FROM section_input s CROSS JOIN new_invoice ni
-        RETURNING id, position
-      ), new_line_items AS (
-        INSERT INTO invoice_line_items (section_id, description, quantity, amount, position)
-        SELECT ns.id, li.description, li.quantity, li.amount, li.position
-        FROM section_input s
-        JOIN new_sections ns ON ns.position = s.position
-        CROSS JOIN LATERAL jsonb_to_recordset(s.items)
-          AS li(description text, quantity numeric, amount numeric, position int)
-        RETURNING id
-      )
+      ), ${INVOICE_SECTIONS_INSERT_CTES("new_invoice")}
       SELECT ${INVOICE_COLS} FROM new_invoice`,
     params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
               currency: i.currency ?? "USD", notes: i.notes ?? null,
               grandTotal: i.grandTotal, status: i.status ?? "DRAFT",
-              sections: JSON.stringify(sections) },
+              sections: serializeInvoiceSections(i.sections) },
+  };
+}
+
+// Paid invoices are immutable; status and invoice number are left untouched
+// (status changes go through updateInvoiceStatus). Old sections are deleted in
+// the same statement, so their line items cascade and the new ones replace them.
+export function updateInvoiceFull(acc: string, args: { invoiceId: string; input: any }): SqlRequest {
+  const i = args.input;
+  return {
+    statement: `WITH target AS (
+        SELECT id FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'
+        FOR UPDATE
+      ), valid_client AS (
+        SELECT CAST(:clientId AS uuid) AS id
+        WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
+          SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
+        )
+      ), updated_invoice AS (
+        UPDATE invoices inv SET client_id = valid_client.id, date = :date, due_date = :dueDate,
+          week_number = :week, bill_to_name = :billName, bill_to_address = :billAddr, project = :project,
+          currency = COALESCE(CAST(:currency AS text), inv.currency), notes = :notes,
+          grand_total = :grandTotal, updated_at = now()
+        FROM target CROSS JOIN valid_client
+        WHERE inv.id = target.id
+        RETURNING inv.*
+      ), removed_sections AS (
+        DELETE FROM invoice_sections WHERE invoice_id IN (SELECT id FROM updated_invoice)
+        RETURNING id
+      ), ${INVOICE_SECTIONS_INSERT_CTES("updated_invoice")}
+      SELECT ${INVOICE_COLS} FROM updated_invoice`,
+    params: { acc, invoiceId: args.invoiceId, clientId: i.clientId ?? null, date: i.date,
+              dueDate: i.dueDate ?? null, week: i.weekNumber, billName: i.billToName,
+              billAddr: i.billToAddress, project: i.project, currency: i.currency ?? null,
+              notes: i.notes ?? null, grandTotal: i.grandTotal,
+              sections: serializeInvoiceSections(i.sections) },
   };
 }
 

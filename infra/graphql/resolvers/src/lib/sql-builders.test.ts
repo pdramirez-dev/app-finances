@@ -3,7 +3,7 @@ import {
   listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice, updateInvoiceStatus,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
   putClient, putBankAccount, putAccount,
-  putInvoiceCreate, createInvoiceFull, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
   normalizeMaskedBankValue, decodePageToken, nextPageToken,
 } from "./sql-builders";
@@ -279,4 +279,30 @@ test("lineItemsBySection reads sectionId from source", () => {
   expect(r.statement).toMatch(/account_id = :acc/i);
   expect(r.statement).toMatch(/id AS "lineItemId"/);
   expect(r.params).toMatchObject({ sectionId: "SEC1", acc: "ACC_A" });
+});
+
+test("updateInvoiceFull replaces header, sections and items atomically for an editable tenant invoice", () => {
+  const r = updateInvoiceFull("ACC_A", { invoiceId: "INV1", input: { clientId: "C1", date: "2026-01-01",
+    weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 10,
+    sections: [{ title: "S1", total: 10, lineItems: [{ description: "d", quantity: 1, amount: 10 }] }] } } as any);
+  expect(r.statement).toMatch(/FROM invoices WHERE id = :invoiceId AND account_id = :acc AND status <> 'PAID'/i);
+  expect(r.statement).toMatch(/clients c WHERE c\.id = CAST\(:clientId AS uuid\) AND c\.account_id = :acc/i);
+  expect(r.statement).toMatch(/UPDATE invoices inv SET/i);
+  expect(r.statement).toMatch(/DELETE FROM invoice_sections/i);
+  expect(r.statement).toMatch(/INSERT INTO invoice_sections/i);
+  expect(r.statement).toMatch(/INSERT INTO invoice_line_items/i);
+  expect(r.statement).not.toMatch(/invoice_counters/i);
+  expect(r.statement).not.toMatch(/status\s*=\s*:status/i);
+  expect(r.statement).toMatch(/id AS "invoiceId"/);
+  expect(r.params).toMatchObject({ acc: "ACC_A", invoiceId: "INV1", clientId: "C1", grandTotal: 10 });
+  expect(JSON.parse(r.params.sections as string)).toEqual([
+    { title: "S1", position: 0, total: 10, items: [{ description: "d", quantity: 1, amount: 10, position: 0 }] },
+  ]);
+});
+
+test("updateInvoiceFull ignores a client-supplied accountId", () => {
+  const r = updateInvoiceFull("ACC_A", { invoiceId: "INV1", input: { accountId: "ACC_B", date: "2026-01-01",
+    weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(r.params.acc).toBe("ACC_A");
+  expect(Object.values(r.params)).not.toContain("ACC_B");
 });

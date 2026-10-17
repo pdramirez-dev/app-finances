@@ -3,7 +3,7 @@ import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
 import {
   listClients, getClient, getInvoice,
-  putInvoiceCreate, createInvoiceFull, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
@@ -188,4 +188,67 @@ dbTest("createInvoiceFull with a foreign client id inserts nothing at all (atomi
   expect(rows).toHaveLength(0);
   const after = (await countRows()).rows[0];
   expect(after).toEqual(before);
+});
+
+const sectionLayout = async (invoiceId: string) => (await db.query(
+  `SELECT s.title, li.description, li.position
+   FROM invoice_sections s LEFT JOIN invoice_line_items li ON li.section_id = s.id
+   WHERE s.invoice_id = $1 ORDER BY s.position, li.position`,
+  [invoiceId],
+)).rows.map((r) => [r.title, r.description, r.position]);
+
+const createEditableInvoice = async () => (await run(createInvoiceFull(ACC_A, { input: {
+  date: "2026-03-01", weekNumber: 9, billToName: "Original", billToAddress: "Addr", project: "P",
+  grandTotal: 20,
+  sections: [{ title: "Old", total: 20, lineItems: [{ description: "Old item", quantity: 2, amount: 10 }] }],
+} } as any)))[0];
+
+dbTest("updateInvoiceFull replaces header, sections and line items and keeps number and status", async () => {
+  const created = await createEditableInvoice();
+  const rows = await run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: {
+    clientId: "aaaaaaaa-0000-0000-0000-000000000001",
+    date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "New addr", project: "P2",
+    grandTotal: 35,
+    sections: [
+      { title: "Crew", total: 30, lineItems: [
+        { description: "Day 1", quantity: 1, amount: 10 },
+        { description: "Day 2", quantity: 2, amount: 10 },
+      ] },
+      { title: "Extras", total: 5, lineItems: [{ description: "Gear", quantity: 1, amount: 5 }] },
+    ],
+  } } as any));
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ invoiceId: created.invoiceId, invoiceNumber: created.invoiceNumber,
+    status: "DRAFT", billToName: "Edited", clientId: "aaaaaaaa-0000-0000-0000-000000000001" });
+  expect(Number(rows[0].grandTotal)).toBe(35);
+  expect(await sectionLayout(created.invoiceId)).toEqual([
+    ["Crew", "Day 1", 0], ["Crew", "Day 2", 1], ["Extras", "Gear", 0],
+  ]);
+});
+
+dbTest("updateInvoiceFull cannot edit another account's invoice", async () => {
+  const rows = await run(updateInvoiceFull(ACC_A, { invoiceId: "cccccccc-0000-0000-0000-000000000001", input: {
+    date: "2026-03-02", weekNumber: 10, billToName: "Hijacked", billToAddress: "x", project: "x",
+    grandTotal: 0, sections: [],
+  } } as any));
+  expect(rows).toHaveLength(0);
+  const still = await db.query("SELECT bill_to_name FROM invoices WHERE id = 'cccccccc-0000-0000-0000-000000000001'");
+  expect(still.rows[0].bill_to_name).toBe("Cliente B");
+});
+
+dbTest("updateInvoiceFull leaves paid invoices and foreign-client edits untouched", async () => {
+  const created = await createEditableInvoice();
+  const edit = (clientId: string | null) => run(updateInvoiceFull(ACC_A, { invoiceId: created.invoiceId, input: {
+    clientId, date: "2026-03-02", weekNumber: 10, billToName: "Edited", billToAddress: "x", project: "x",
+    grandTotal: 0, sections: [],
+  } } as any));
+
+  expect(await edit("bbbbbbbb-0000-0000-0000-000000000001")).toHaveLength(0); // client of ACC_B
+  expect(await sectionLayout(created.invoiceId)).toEqual([["Old", "Old item", 0]]);
+
+  await db.query("UPDATE invoices SET status = 'PAID' WHERE id = $1", [created.invoiceId]);
+  expect(await edit(null)).toHaveLength(0);
+  const still = await db.query("SELECT bill_to_name FROM invoices WHERE id = $1", [created.invoiceId]);
+  expect(still.rows[0].bill_to_name).toBe("Original");
+  expect(await sectionLayout(created.invoiceId)).toEqual([["Old", "Old item", 0]]);
 });

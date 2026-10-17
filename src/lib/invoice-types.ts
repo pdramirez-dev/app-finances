@@ -23,6 +23,7 @@ export type InvoiceSectionRecord = {
 export type InvoiceRecord = {
   invoiceId: string;
   invoiceNumber: number;
+  clientId: string | null;
   date: Date;
   dueDate: Date | null;
   weekNumber: number;

@@ -470,6 +470,22 @@ export class AppNexoBackendStack extends cdk.Stack {
       pipelineConfig: [membershipGuardFn, updateInvoiceStatusRdsFn, auditWriteFn],
     });
 
+    const updateInvoiceFullRdsFn = new appsync.AppsyncFunction(this, "UpdateInvoiceFullRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "UpdateInvoiceFullRdsFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-update-invoice-full.js"),
+    });
+
+    graphqlApi.createResolver("MutationUpdateInvoiceFullResolver", {
+      typeName: "Mutation",
+      fieldName: "updateInvoiceFull",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-update-invoice-full.js"),
+      pipelineConfig: [membershipGuardFn, updateInvoiceFullRdsFn, auditWriteFn],
+    });
+
     const requestInvoicePdfFn = new appsync.AppsyncFunction(this, "RequestInvoicePdfFn", {
       api: graphqlApi,
       dataSource: pdfLambdaDs,

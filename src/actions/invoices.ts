@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { createInvoiceFull, deleteInvoice, updateInvoiceStatus } from "@/lib/appsync/invoices";
+import type { CreateInvoiceFullInput } from "@/lib/appsync/graphql.generated";
+import { createInvoiceFull, deleteInvoice, updateInvoiceFull, updateInvoiceStatus } from "@/lib/appsync/invoices";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { calculateGrandTotal, calculateSectionTotal } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
@@ -20,12 +21,11 @@ function getFirstErrorMessage(error: z.ZodError) {
   return firstIssue?.message ?? "Invalid form values";
 }
 
-export async function createInvoiceAction(
-  _previousState: CreateInvoiceActionState,
-  formData: FormData,
-): Promise<CreateInvoiceActionState> {
-  await requireAuth();
+type ParsedInvoiceForm =
+  | { error: string }
+  | { input: Omit<CreateInvoiceFullInput, "status"> };
 
+function parseInvoiceForm(formData: FormData): ParsedInvoiceForm {
   const sectionsRaw = formData.get("sections");
 
   if (typeof sectionsRaw !== "string") {
@@ -63,31 +63,71 @@ export async function createInvoiceAction(
   }
 
   const payload = payloadResult.data;
-  const grandTotal = calculateGrandTotal(payload.sections);
-  const createdInvoice = await createInvoiceFull({
-    clientId: payload.clientId,
-    date: format(payload.date, "yyyy-MM-dd"),
-    dueDate: format(payload.dueDate, "yyyy-MM-dd"),
-    weekNumber: payload.weekNumber,
-    billToName: payload.billToName,
-    billToAddress: payload.billToAddress,
-    project: payload.project,
-    notes: payload.notes,
-    grandTotal,
-    status: "DRAFT",
-    sections: payload.sections.map((section) => ({
-      title: section.title,
-      total: calculateSectionTotal(section),
-      lineItems: section.items.map((item) => ({
-        description: item.description,
-        quantity: item.quantity,
-        amount: item.amount,
+
+  return {
+    input: {
+      clientId: payload.clientId,
+      date: format(payload.date, "yyyy-MM-dd"),
+      dueDate: format(payload.dueDate, "yyyy-MM-dd"),
+      weekNumber: payload.weekNumber,
+      billToName: payload.billToName,
+      billToAddress: payload.billToAddress,
+      project: payload.project,
+      notes: payload.notes,
+      grandTotal: calculateGrandTotal(payload.sections),
+      sections: payload.sections.map((section) => ({
+        title: section.title,
+        total: calculateSectionTotal(section),
+        lineItems: section.items.map((item) => ({
+          description: item.description,
+          quantity: item.quantity,
+          amount: item.amount,
+        })),
       })),
-    })),
-  });
+    },
+  };
+}
+
+export async function createInvoiceAction(
+  _previousState: CreateInvoiceActionState,
+  formData: FormData,
+): Promise<CreateInvoiceActionState> {
+  await requireAuth();
+
+  const parsed = parseInvoiceForm(formData);
+
+  if ("error" in parsed) {
+    return { error: parsed.error };
+  }
+
+  const createdInvoice = await createInvoiceFull({ ...parsed.input, status: "DRAFT" });
 
   revalidatePath("/invoices");
   redirect(`/invoices/${createdInvoice.invoiceId}`);
+}
+
+export async function updateInvoiceAction(
+  invoiceId: string,
+  _previousState: CreateInvoiceActionState,
+  formData: FormData,
+): Promise<CreateInvoiceActionState> {
+  await requireAuth();
+
+  const parsed = parseInvoiceForm(formData);
+
+  if ("error" in parsed) {
+    return { error: parsed.error };
+  }
+
+  try {
+    await updateInvoiceFull(invoiceId, parsed.input);
+  } catch {
+    return { error: "No se pudo guardar la factura. Verifica que no esté pagada e inténtalo de nuevo." };
+  }
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${invoiceId}`);
+  redirect(`/invoices/${invoiceId}`);
 }
 
 const invoiceStatusSchema = z.enum(INVOICE_STATUSES);

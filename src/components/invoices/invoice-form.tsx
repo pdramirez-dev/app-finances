@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 
 import { createInvoiceAction, type CreateInvoiceActionState } from "@/actions/invoices";
+import type { InvoiceRecord } from "@/lib/invoice-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,9 +41,40 @@ function parseNumeric(value: string) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
-  const [state, formAction, isPending] = useActionState(createInvoiceAction, initialState);
+type InvoiceFormAction = (
+  state: CreateInvoiceActionState,
+  formData: FormData,
+) => Promise<CreateInvoiceActionState>;
+
+function sectionsFromInvoice(invoice: InvoiceRecord): EditableSection[] {
+  return invoice.sections.map((section) => ({
+    title: section.title,
+    items: section.lineItems.map((item) => ({
+      description: item.description,
+      quantity: String(item.quantity),
+      amount: String(item.amount),
+    })),
+  }));
+}
+
+export function InvoiceForm({
+  clients = [],
+  invoice,
+  action = createInvoiceAction,
+}: {
+  clients?: Client[];
+  invoice?: InvoiceRecord;
+  action?: InvoiceFormAction;
+}) {
+  const isEditing = Boolean(invoice);
+  const [state, formAction, isPending] = useActionState(action, initialState);
   const [defaultDates] = useState(() => {
+    if (invoice) {
+      return {
+        issueDate: toDateInputValue(invoice.date),
+        dueDate: invoice.dueDate ? toDateInputValue(invoice.dueDate) : "",
+      };
+    }
     const issueDate = new Date();
     const dueDate = new Date(issueDate);
     dueDate.setDate(dueDate.getDate() + 30);
@@ -51,15 +83,17 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
       dueDate: toDateInputValue(dueDate),
     };
   });
-  const [sections, setSections] = useState<EditableSection[]>(
-    defaultSectionTemplate.map((section) => ({
-      title: section.title,
-      items: section.items.map((item) => ({
-        description: item.description,
-        quantity: String(item.quantity),
-        amount: String(item.amount),
-      })),
-    })),
+  const [sections, setSections] = useState<EditableSection[]>(() =>
+    invoice && invoice.sections.length > 0
+      ? sectionsFromInvoice(invoice)
+      : defaultSectionTemplate.map((section) => ({
+          title: section.title,
+          items: section.items.map((item) => ({
+            description: item.description,
+            quantity: String(item.quantity),
+            amount: String(item.amount),
+          })),
+        })),
   );
 
   const sectionsPayload = useMemo(
@@ -164,7 +198,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="clientId">Cliente guardado</Label>
-            <select id="clientId" name="clientId" className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+            <select id="clientId" name="clientId" defaultValue={invoice?.clientId ?? ""} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
               <option value="">Sin cliente vinculado</option>
               {clients.map((client) => <option key={client.clientId} value={client.clientId}>{client.name}</option>)}
             </select>
@@ -172,7 +206,7 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="weekNumber">Número de semana</Label>
-            <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} required />
+            <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} defaultValue={invoice?.weekNumber} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="date">Fecha</Label>
@@ -184,19 +218,19 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="project">Proyecto</Label>
-            <Input id="project" name="project" placeholder="Mantenimiento regional" required />
+            <Input id="project" name="project" placeholder="Mantenimiento regional" defaultValue={invoice?.project} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="billToName">Facturar a</Label>
-            <Input id="billToName" name="billToName" placeholder="Nombre de la empresa" required />
+            <Input id="billToName" name="billToName" placeholder="Nombre de la empresa" defaultValue={invoice?.billToName} required />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="billToAddress">Dirección de facturación</Label>
-            <Textarea id="billToAddress" name="billToAddress" rows={3} required />
+            <Textarea id="billToAddress" name="billToAddress" rows={3} defaultValue={invoice?.billToAddress} required />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="notes">Notas (opcional)</Label>
-            <Textarea id="notes" name="notes" rows={3} />
+            <Textarea id="notes" name="notes" rows={3} defaultValue={invoice?.notes ?? ""} />
           </div>
         </CardContent>
       </Card>
@@ -318,14 +352,18 @@ export function InvoiceForm({ clients = [] }: { clients?: Client[] }) {
 
           {state.error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-sm font-medium text-red-700">No se pudo crear el invoice</p>
+              <p className="text-sm font-medium text-red-700">
+                {isEditing ? "No se pudo guardar la factura" : "No se pudo crear la factura"}
+              </p>
               <p className="mt-1 text-sm text-red-600">{state.error}</p>
             </div>
           ) : null}
 
           <div className="flex justify-end">
             <Button type="submit" className="bg-[#0a1226] text-white hover:bg-[#162448]" disabled={isPending}>
-              {isPending ? "Creando…" : "Crear factura"}
+              {isEditing
+                ? isPending ? "Guardando…" : "Guardar cambios"
+                : isPending ? "Creando…" : "Crear factura"}
             </Button>
           </div>
         </CardContent>

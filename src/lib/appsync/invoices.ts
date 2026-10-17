@@ -8,6 +8,8 @@ import type {
   GetInvoiceByNumberQuery,
   GetInvoiceQuery,
   ListInvoicesQuery,
+  UpdateInvoiceFullInput,
+  UpdateInvoiceFullMutation,
   UpdateInvoiceStatusMutation,
 } from "@/lib/appsync/graphql.generated";
 import type {
@@ -74,10 +76,10 @@ function createDemoInvoice(
 function initialDemoInvoices(): InvoiceRaw[] {
   const now = new Date().toISOString();
   return [
-    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { clientId: "10000000-0000-4000-8000-000000000001", date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { clientId: "10000000-0000-4000-8000-000000000002", date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { clientId: "10000000-0000-4000-8000-000000000004", date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { clientId: "10000000-0000-4000-8000-000000000005", date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
   ];
 }
 
@@ -116,6 +118,7 @@ function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {
   return {
     invoiceId,
     invoiceNumber,
+    clientId: input.clientId ? String(input.clientId) : null,
     date: String(input.date),
     dueDate: input.dueDate ? String(input.dueDate) : null,
     weekNumber: Number(input.weekNumber),
@@ -138,6 +141,7 @@ const LIST_INVOICES_QUERY = /* GraphQL */ `
       items {
         invoiceId
         invoiceNumber
+        clientId
         date
         dueDate
         weekNumber
@@ -161,6 +165,7 @@ const GET_INVOICE_QUERY = /* GraphQL */ `
     getInvoice(invoiceId: $invoiceId) {
       invoiceId
       invoiceNumber
+      clientId
       date
       dueDate
       weekNumber
@@ -197,6 +202,7 @@ const GET_INVOICE_BY_NUMBER_QUERY = /* GraphQL */ `
     getInvoiceByNumber(invoiceNumber: $invoiceNumber) {
       invoiceId
       invoiceNumber
+      clientId
       date
       dueDate
       weekNumber
@@ -218,6 +224,29 @@ const CREATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
     createInvoiceFull(input: $input) {
       invoiceId
       invoiceNumber
+      clientId
+      date
+      dueDate
+      weekNumber
+      billToName
+      billToAddress
+      project
+      currency
+      notes
+      grandTotal
+      status
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const UPDATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
+  mutation UpdateInvoiceFull($invoiceId: ID!, $input: UpdateInvoiceFullInput!) {
+    updateInvoiceFull(invoiceId: $invoiceId, input: $input) {
+      invoiceId
+      invoiceNumber
+      clientId
       date
       dueDate
       weekNumber
@@ -239,6 +268,7 @@ const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
     updateInvoiceStatus(invoiceId: $invoiceId, status: $status) {
       invoiceId
       invoiceNumber
+      clientId
       date
       dueDate
       weekNumber
@@ -292,6 +322,7 @@ function normalizeInvoice(invoice: InvoiceRaw): InvoiceRecord {
   return {
     invoiceId: invoice.invoiceId,
     invoiceNumber: invoice.invoiceNumber,
+    clientId: invoice.clientId ?? null,
     date: parseDate(invoice.date),
     dueDate: invoice.dueDate ? parseDate(invoice.dueDate) : null,
     weekNumber: invoice.weekNumber,
@@ -331,6 +362,18 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
       const invoice = invoiceFromDemoInput(input);
       demoInvoiceStore().unshift(invoice);
       return { createInvoiceFull: invoice } as T;
+    }
+    if (query.includes("UpdateInvoiceFull")) {
+      const invoices = demoInvoiceStore();
+      const index = invoices.findIndex((item) => item.invoiceId === variables?.invoiceId);
+      const current = invoices[index];
+      if (!current || current.status === "PAID") throw new Error("La factura no existe o ya está pagada");
+      const rebuilt = invoiceFromDemoInput(input);
+      const sections = (rebuilt.sections ?? []).map((section) => ({ ...section, invoiceId: current.invoiceId }));
+      const invoice = { ...rebuilt, invoiceId: current.invoiceId, invoiceNumber: current.invoiceNumber,
+        status: current.status, createdAt: current.createdAt, sections };
+      invoices[index] = invoice;
+      return { updateInvoiceFull: invoice } as T;
     }
     if (query.includes("UpdateInvoiceStatus")) {
       const invoice = demoInvoiceStore().find((item) => item.invoiceId === variables?.invoiceId);
@@ -444,6 +487,17 @@ export async function createInvoiceFull(input: CreateInvoiceFullInput): Promise<
     input,
   });
   return normalizeInvoice(data.createInvoiceFull);
+}
+
+export async function updateInvoiceFull(
+  invoiceId: string,
+  input: UpdateInvoiceFullInput,
+): Promise<InvoiceRecord> {
+  const data = await appsyncRequest<UpdateInvoiceFullMutation>(UPDATE_INVOICE_FULL_MUTATION, {
+    invoiceId,
+    input,
+  });
+  return normalizeInvoice(data.updateInvoiceFull);
 }
 
 export async function updateInvoiceStatus(

@@ -40,6 +40,11 @@ export default async function InvoiceDetailPage({
           <Button asChild variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
             <Link href="/invoices">Volver</Link>
           </Button>
+          {invoice.status !== "PAID" ? (
+            <Button asChild variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+              <Link href={`/invoices/${invoice.invoiceId}/edit`}>Editar</Link>
+            </Button>
+          ) : null}
           <Button asChild className="bg-[#0a1226] text-white hover:bg-[#162448]">
             <Link href={`/invoices/${invoice.invoiceId}/print`} target="_blank">
               Imprimir / PDF

@@ -147,6 +147,31 @@ test("all CRM mutations are audited after the membership guard and RDS write", (
   }
 });
 
+test("invoice edits and status changes are audited after the membership guard and RDS write", () => {
+  const t = synth();
+  const template = t.toJSON();
+  const guardId = Object.keys(template.Resources).find((id) => id.startsWith("RequireMembershipFn"));
+  const auditId = Object.keys(template.Resources).find((id) => id.startsWith("AuditWriteFn"));
+  const resolvers = Object.values(t.findResources("AWS::AppSync::Resolver")) as Array<{
+    Properties: {
+      TypeName: string;
+      FieldName: string;
+      PipelineConfig?: { Functions?: Array<{ "Fn::GetAtt"?: [string, string] }> };
+    };
+  }>;
+
+  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull"]) {
+    const matches = resolvers.filter((item) =>
+      item.Properties.TypeName === "Mutation" && item.Properties.FieldName === fieldName,
+    );
+    expect(matches, `expected exactly one resolver for Mutation.${fieldName}`).toHaveLength(1);
+    const functions = matches[0].Properties.PipelineConfig?.Functions ?? [];
+    expect(functions).toHaveLength(3);
+    expect(functions[0]?.["Fn::GetAtt"]?.[0]).toBe(guardId);
+    expect(functions[2]?.["Fn::GetAtt"]?.[0]).toBe(auditId);
+  }
+});
+
 test("creates AppSync and Lambda operational alarms", () => {
   const t = synth();
   t.resourceCountIs("AWS::CloudWatch::Alarm", 4);

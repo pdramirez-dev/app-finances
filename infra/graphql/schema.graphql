@@ -144,6 +144,7 @@ type Query {
 type Mutation {
   putInvoice(input: PutInvoiceInput!): Invoice!
   createInvoiceFull(input: CreateInvoiceFullInput!): Invoice!
+  updateInvoiceFull(invoiceId: ID!, input: UpdateInvoiceFullInput!): Invoice!
   putInvoiceSection(input: PutInvoiceSectionInput!): InvoiceSection!
   putInvoiceLineItem(input: PutInvoiceLineItemInput!): InvoiceLineItem!
   deleteInvoiceSection(invoiceId: ID!, sectionId: ID!): Boolean!
@@ -528,6 +529,20 @@ input CreateInvoiceFullInput {
   notes: String
   grandTotal: Float!
   status: InvoiceStatus
+  sections: [CreateInvoiceFullSectionInput!]!
+}
+
+input UpdateInvoiceFullInput {
+  clientId: ID
+  date: AWSDate!
+  dueDate: AWSDate
+  weekNumber: Int!
+  billToName: String!
+  billToAddress: String!
+  project: String!
+  currency: String
+  notes: String
+  grandTotal: Float!
   sections: [CreateInvoiceFullSectionInput!]!
 }
 

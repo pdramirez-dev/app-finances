@@ -6,6 +6,7 @@ Todos los cambios importantes del proyecto se documentan en este archivo.
 
 ### Added
 
+- Edición de facturas existentes (`updateInvoiceFull`): reemplaza datos, secciones y conceptos en una sola sentencia atómica, conserva número y estado, bloquea facturas pagadas y queda auditada.
 - Validación central de membresía activa antes de todos los resolvers de dominio.
 - Tipo/query `UserMembership` y roles `OWNER|ADMIN|MEMBER`.
 - Relación tenant-safe entre invoices y clients mediante FK compuesta.
