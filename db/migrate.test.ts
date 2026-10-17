@@ -74,7 +74,7 @@ test.skipIf(!dbAvailable)("records the CRM migration", async () => {
 
 test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing legacy history", async () => {
   const legacy = await client.query(
-    "SELECT version FROM schema_migrations ORDER BY version",
+    "SELECT version FROM schema_migrations ORDER BY version COLLATE \"C\"",
   );
   expect(legacy.rows.map((row) => row.version)).toEqual([
     "0001_init",
@@ -86,7 +86,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
   ]);
 
   const knexHistory = await client.query(
-    "SELECT name FROM knex_migrations ORDER BY name",
+    "SELECT name FROM knex_migrations ORDER BY name COLLATE \"C\"",
   );
   expect(knexHistory.rows.map((row) => row.name)).toEqual([
     "0001_init.sql",
