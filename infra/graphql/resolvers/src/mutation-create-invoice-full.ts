@@ -1,16 +1,13 @@
 import { util } from "@aws-appsync/utils";
 import { toJsonObject } from "@aws-appsync/utils/rds";
 import { createInvoiceFull } from "./lib/sql-builders";
+import { sqlVariables } from "./lib/sql-params";
 
 export function request(ctx: any) {
   const acc = ctx.identity.claims["custom:accountId"];
   if (!acc) util.unauthorized();
   const { statement, params } = createInvoiceFull(acc, ctx.args);
-  const variableMap: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) {
-    variableMap[`:${k}`] = v;
-  }
-  return { statements: [statement], variableMap, variableTypeHintMap: {} };
+  return { statements: [statement], ...sqlVariables(params) };
 }
 
 export function response(ctx: any) {

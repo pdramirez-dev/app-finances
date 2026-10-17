@@ -72,7 +72,7 @@ const BANK_ACCOUNT_COLS =
   `id AS "bankAccountId", account_id AS "accountId", beneficiary_name AS "beneficiaryName", bank_name AS "bankName", account_number_masked AS "accountNumberMasked", routing_number_masked AS "routingNumberMasked", iban_masked AS "ibanMasked", swift_code AS "swiftCode", currency, country, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 export function listInvoices(acc: string, args: { status?: string; limit?: number; offset?: number }): SqlRequest {
-  const where = args.status ? "account_id = :acc AND status = :status" : "account_id = :acc";
+  const where = args.status ? "account_id = :acc AND status = CAST(:status AS invoice_status)" : "account_id = :acc";
   const params: Record<string, unknown> = { acc, lim: args.limit ?? DEFAULT_PAGE_SIZE, off: args.offset ?? 0 };
   if (args.status) params.status = args.status;
   return {
@@ -105,7 +105,7 @@ export function deleteInvoice(acc: string, args: { invoiceId: string }): SqlRequ
 
 export function updateInvoiceStatus(acc: string, args: { invoiceId: string; status: string }): SqlRequest {
   return {
-    statement: `UPDATE invoices SET status = :status, updated_at = now()
+    statement: `UPDATE invoices SET status = CAST(:status AS invoice_status), updated_at = now()
                 WHERE id = :id AND account_id = :acc RETURNING ${INVOICE_COLS}`,
     params: { id: args.invoiceId, status: args.status, acc },
   };
@@ -149,7 +149,7 @@ export function putClient(acc: string, args: { input: any }): SqlRequest {
     statement: `INSERT INTO clients (id, account_id, name, email, phone, address, tax_id, industry,
                   website, status, owner_user_id, tags, notes, updated_at)
                 VALUES (COALESCE(:id, gen_random_uuid()), :acc, :name, :email, :phone, :address, :taxId,
-                  :industry, :website, :status, :ownerUserId,
+                  :industry, :website, CAST(:status AS client_status), :ownerUserId,
                   ARRAY(SELECT jsonb_array_elements_text(CAST(:tags AS jsonb))), :notes, now())
                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email,
                   phone = EXCLUDED.phone, address = EXCLUDED.address, tax_id = EXCLUDED.tax_id,
@@ -189,7 +189,7 @@ export function putAccount(acc: string, args: { input: any }): SqlRequest {
   const i = args.input;
   return {
     statement: `INSERT INTO accounts (id, type, display_name, legal_name, tax_id, email, phone, address, updated_at)
-                VALUES (:acc, :type, :displayName, :legalName, :taxId, :email, :phone, :address, now())
+                VALUES (:acc, CAST(:type AS account_type), :displayName, :legalName, :taxId, :email, :phone, :address, now())
                 ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, display_name = EXCLUDED.display_name,
                   legal_name = EXCLUDED.legal_name, tax_id = EXCLUDED.tax_id, email = EXCLUDED.email,
                   phone = EXCLUDED.phone, address = EXCLUDED.address, updated_at = now()
@@ -215,7 +215,7 @@ export function putInvoiceCreate(acc: string, args: { input: any }): SqlRequest 
       INSERT INTO invoices (account_id, client_id, invoice_number, date, due_date, week_number, bill_to_name,
         bill_to_address, project, currency, notes, grand_total, status)
       SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
-        :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+        :currency, :notes, :grandTotal, CAST(:status AS invoice_status) FROM n CROSS JOIN valid_client
       RETURNING ${INVOICE_COLS}`,
     params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
@@ -282,7 +282,7 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
         INSERT INTO invoices (account_id, client_id, series_id, series_code, invoice_number, date, due_date,
           week_number, bill_to_name, bill_to_address, project, currency, notes, grand_total, status)
         SELECT :acc, valid_client.id, n.series_id, n.series_code, n.number, :date, :dueDate, :week, :billName,
-          :billAddr, :project, :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+          :billAddr, :project, :currency, :notes, :grandTotal, CAST(:status AS invoice_status) FROM n CROSS JOIN valid_client
         RETURNING *
       ), ${INVOICE_SECTIONS_INSERT_CTES("new_invoice")}
       SELECT ${INVOICE_COLS} FROM new_invoice`,

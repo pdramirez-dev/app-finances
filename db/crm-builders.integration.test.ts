@@ -16,6 +16,7 @@ import {
   undoReconciliation,
 } from "../infra/graphql/resolvers/src/lib/crm-sql-builders";
 import type { SqlRequest } from "../infra/graphql/resolvers/src/lib/sql-builders";
+import { bindLikeDataApi } from "../infra/test/data-api-binding";
 import { runMigrations } from "./migrate";
 
 const DATABASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:55432/app_nexo_test";
@@ -33,21 +34,8 @@ const dbAvailable = await (async () => {
 
 let db: Client;
 
-function bind(request: SqlRequest) {
-  const names: string[] = [];
-  const text = request.statement.replace(/(?<!:):([A-Za-z][A-Za-z0-9_]*)/g, (_match, name: string) => {
-    let index = names.indexOf(name);
-    if (index === -1) {
-      names.push(name);
-      index = names.length - 1;
-    }
-    return `$${index + 1}`;
-  });
-  return { text, values: names.map((name) => request.params[name]) };
-}
-
 async function execute<T extends QueryResultRow = QueryResultRow>(request: SqlRequest) {
-  return db.query<T>(bind(request));
+  return db.query<T>(bindLikeDataApi(request));
 }
 
 beforeAll(async () => {
