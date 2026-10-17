@@ -36,8 +36,15 @@ export function formatMoneyParts(amount: number, currency = "USD") {
   return { symbol, value };
 }
 
+// For dates parsed from AWSDate strings (UTC midnight): keeps the stored day.
 export function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+// For "today"-style defaults: the calendar day in the viewer's own timezone.
+export function toLocalDateInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 // Mirrors INVOICE_NUMBER_LABEL in the resolvers: the general numbering stays a

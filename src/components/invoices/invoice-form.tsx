@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useSyncExternalStore } from "react";
 import { Trash2 } from "lucide-react";
 
 import { createInvoiceAction, type CreateInvoiceActionState } from "@/actions/invoices";
@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { defaultSectionTemplate } from "@/lib/company";
 import type { Client } from "@/lib/appsync/workspace";
-import { formatInvoiceNumber, formatMoney, toDateInputValue } from "@/lib/invoices";
+import { formatInvoiceNumber, formatMoney, toDateInputValue, toLocalDateInputValue } from "@/lib/invoices";
 
 type EditableItem = {
   description: string;
@@ -35,6 +35,19 @@ function newItem(): EditableItem {
     quantity: "1",
     amount: "0",
   };
+}
+
+function subscribeToNothing() {
+  return () => {};
+}
+
+function localToday() {
+  return toLocalDateInputValue(new Date());
+}
+
+function addDaysToDateInput(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  return toLocalDateInputValue(new Date(year, month - 1, day + days));
 }
 
 function parseNumeric(value: string) {
@@ -73,21 +86,15 @@ export function InvoiceForm({
   const defaultSeriesId = activeSeries.find((item) => item.isDefault)?.seriesId ?? "";
   const isEditing = Boolean(invoice);
   const [state, formAction, isPending] = useActionState(action, initialState);
-  const [defaultDates] = useState(() => {
-    if (invoice) {
-      return {
+  // New invoices default to "today" in the viewer's timezone, which the server
+  // cannot know: the server snapshot is empty and the client fills it in.
+  const today = useSyncExternalStore(subscribeToNothing, localToday, () => "");
+  const defaultDates = invoice
+    ? {
         issueDate: toDateInputValue(invoice.date),
         dueDate: invoice.dueDate ? toDateInputValue(invoice.dueDate) : "",
-      };
-    }
-    const issueDate = new Date();
-    const dueDate = new Date(issueDate);
-    dueDate.setDate(dueDate.getDate() + 30);
-    return {
-      issueDate: toDateInputValue(issueDate),
-      dueDate: toDateInputValue(dueDate),
-    };
-  });
+      }
+    : { issueDate: today, dueDate: today ? addDaysToDateInput(today, 30) : "" };
   const [sections, setSections] = useState<EditableSection[]>(() =>
     invoice && invoice.sections.length > 0
       ? sectionsFromInvoice(invoice)
@@ -239,11 +246,11 @@ export function InvoiceForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="date">Fecha</Label>
-            <Input id="date" name="date" type="date" defaultValue={defaultDates.issueDate} required />
+            <Input key={defaultDates.issueDate} id="date" name="date" type="date" defaultValue={defaultDates.issueDate} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="dueDate">Fecha de vencimiento</Label>
-            <Input id="dueDate" name="dueDate" type="date" defaultValue={defaultDates.dueDate} required />
+            <Input key={defaultDates.dueDate} id="dueDate" name="dueDate" type="date" defaultValue={defaultDates.dueDate} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="project">Proyecto</Label>
