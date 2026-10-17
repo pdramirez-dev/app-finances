@@ -364,10 +364,17 @@ export function listPayments(acc: string, args: Args): SqlRequest {
 export function registerPayment(acc: string, args: Args): SqlRequest {
   const i = args.input;
   return {
+    // Locking the invoice serializes payments with invoice edits: a payment that
+    // waits behind a currency change re-checks the new currency, and bumping the
+    // version makes any edit opened before this payment stale.
     statement: `WITH target_invoice AS (
       SELECT i.id, i.currency FROM invoices i
       WHERE i.account_id = :acc AND i.id = :invoiceId
         AND upper(i.currency) = upper(COALESCE(:currency, i.currency))
+      FOR UPDATE
+    ), bumped AS (
+      UPDATE invoices SET version = version + 1 WHERE id IN (SELECT id FROM target_invoice)
+      RETURNING id
     ), saved AS (
       INSERT INTO payments (account_id, invoice_id, bank_account_id, amount, currency, method,
         status, received_at, reference, notes, updated_at)

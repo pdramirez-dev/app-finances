@@ -81,10 +81,10 @@ function createDemoInvoice(
 function initialDemoInvoices(): InvoiceRaw[] {
   const now = new Date().toISOString();
   return [
-    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000001", date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000002", date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000004", date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000005", date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { seriesId: null, seriesCode: "", version: 1, clientId: "10000000-0000-4000-8000-000000000001", date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { seriesId: null, seriesCode: "", version: 1, clientId: "10000000-0000-4000-8000-000000000002", date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { seriesId: null, seriesCode: "", version: 1, clientId: "10000000-0000-4000-8000-000000000004", date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { seriesId: null, seriesCode: "", version: 1, clientId: "10000000-0000-4000-8000-000000000005", date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
   ];
 }
 
@@ -139,6 +139,7 @@ function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {
     invoiceNumber,
     seriesId: null,
     seriesCode: "",
+    version: 1,
     clientId: input.clientId ? String(input.clientId) : null,
     date: String(input.date),
     dueDate: input.dueDate ? String(input.dueDate) : null,
@@ -165,6 +166,7 @@ const LIST_INVOICES_QUERY = /* GraphQL */ `
         clientId
         seriesId
         seriesCode
+        version
         date
         dueDate
         weekNumber
@@ -191,6 +193,7 @@ const GET_INVOICE_QUERY = /* GraphQL */ `
       clientId
       seriesId
       seriesCode
+      version
       date
       dueDate
       weekNumber
@@ -230,6 +233,7 @@ const GET_INVOICE_BY_NUMBER_QUERY = /* GraphQL */ `
       clientId
       seriesId
       seriesCode
+      version
       date
       dueDate
       weekNumber
@@ -254,6 +258,7 @@ const CREATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
       clientId
       seriesId
       seriesCode
+      version
       date
       dueDate
       weekNumber
@@ -278,6 +283,7 @@ const UPDATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
       clientId
       seriesId
       seriesCode
+      version
       date
       dueDate
       weekNumber
@@ -336,6 +342,7 @@ const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
       clientId
       seriesId
       seriesCode
+      version
       date
       dueDate
       weekNumber
@@ -391,6 +398,7 @@ function normalizeInvoice(invoice: InvoiceRaw): InvoiceRecord {
     invoiceNumber: invoice.invoiceNumber,
     seriesId: invoice.seriesId ?? null,
     seriesCode: invoice.seriesCode ?? "",
+    version: invoice.version ?? 1,
     clientId: invoice.clientId ?? null,
     date: parseDate(invoice.date),
     dueDate: invoice.dueDate ? parseDate(invoice.dueDate) : null,
@@ -465,10 +473,11 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
       const index = invoices.findIndex((item) => item.invoiceId === variables?.invoiceId);
       const current = invoices[index];
       if (!current || current.status === "PAID") throw new Error("La factura no existe o ya está pagada");
+      if (current.version !== Number(input.expectedVersion)) throw new Error("La factura cambió mientras la editabas");
       const rebuilt = invoiceFromDemoInput(input);
       const sections = (rebuilt.sections ?? []).map((section) => ({ ...section, invoiceId: current.invoiceId }));
       const invoice = { ...rebuilt, invoiceId: current.invoiceId, invoiceNumber: current.invoiceNumber,
-        seriesId: current.seriesId, seriesCode: current.seriesCode,
+        seriesId: current.seriesId, seriesCode: current.seriesCode, version: current.version + 1,
         status: current.status, createdAt: current.createdAt, sections };
       invoices[index] = invoice;
       return { updateInvoiceFull: invoice } as T;

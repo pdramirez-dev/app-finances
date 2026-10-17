@@ -202,6 +202,7 @@ export function InvoiceForm({
   return (
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="sections" value={JSON.stringify(sectionsPayload)} />
+      {invoice ? <input type="hidden" name="expectedVersion" value={invoice.version} /> : null}
 
       <Card className="brand-surface">
         <CardHeader>
