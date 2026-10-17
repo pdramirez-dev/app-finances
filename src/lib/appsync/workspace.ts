@@ -123,7 +123,7 @@ export async function listClients(limit = 100) {
   do {
     const data: ListClientsQuery = await appsyncRequest<ListClientsQuery>(LIST_CLIENTS_QUERY, {
       limit,
-      nextToken: cursor,
+      nextToken: cursor ?? undefined,
     });
     clients.push(...data.listClients.items);
     cursor = data.listClients.nextToken ?? null;

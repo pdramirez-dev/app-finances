@@ -480,7 +480,7 @@ async function listAll<T>(query: string, field: string, normalize: (raw: Raw) =>
   const items: T[] = [];
   let nextToken: string | null = null;
   do {
-    const data: Record<string, Connection<Raw>> = await appsyncRequest<Record<string, Connection<Raw>>>(query, { ...variables, limit: 100, nextToken });
+    const data: Record<string, Connection<Raw>> = await appsyncRequest<Record<string, Connection<Raw>>>(query, { ...variables, limit: 100, nextToken: nextToken ?? undefined });
     const connection: Connection<Raw> | undefined = data[field];
     if (!connection) throw new Error(`AppSync response does not contain ${field}`);
     items.push(...connection.items.map(normalize));

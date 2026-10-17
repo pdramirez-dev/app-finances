@@ -257,3 +257,17 @@ test("payment reminders run once a day without async retries, scoped like the se
   expect(actions.some((entry) => entry.action.startsWith("rds-data:"))).toBe(true);
   expect(actions.some((entry) => entry.action.startsWith("s3:GetObject"))).toBe(false);
 });
+
+test("localEmulator inlines resolver code and skips the auto-delete custom resource", () => {
+  const regular = synth().toJSON();
+  const local = synth({ localEmulator: true }).toJSON();
+  const types = (template: { Resources: Record<string, { Type: string }> }) => Object.values(template.Resources).map((r) => r.Type);
+  const functionProps = (template: { Resources: Record<string, { Type: string; Properties: Record<string, unknown> }> }) =>
+    Object.values(template.Resources).filter((r) => r.Type === "AWS::AppSync::FunctionConfiguration").map((r) => r.Properties);
+
+  expect(types(regular)).toContain("Custom::S3AutoDeleteObjects");
+  expect(functionProps(regular).every((p) => "CodeS3Location" in p)).toBe(true);
+
+  expect(types(local)).not.toContain("Custom::S3AutoDeleteObjects");
+  expect(functionProps(local).every((p) => typeof p.Code === "string" && !("CodeS3Location" in p))).toBe(true);
+});

@@ -650,7 +650,9 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: idToken,
+      // AppSync takes the raw ID token. Local emulators such as Floci expect
+      // "Bearer <token>"; APPSYNC_AUTH_HEADER_PREFIX is only set for those.
+      authorization: `${process.env.APPSYNC_AUTH_HEADER_PREFIX ?? ""}${idToken}`,
     },
     cache: "no-store",
     body: JSON.stringify({ query, variables }),
@@ -685,7 +687,8 @@ export async function listInvoices(options?: {
     const data: ListInvoicesQuery = await appsyncRequest<ListInvoicesQuery>(LIST_INVOICES_QUERY, {
       status: options?.status,
       limit,
-      nextToken: cursor,
+      // Omit rather than send null: some emulators (Floci) fail on explicit nulls.
+      nextToken: cursor ?? undefined,
     });
 
     for (const item of data.listInvoices.items) {

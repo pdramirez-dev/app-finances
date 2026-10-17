@@ -38,6 +38,7 @@ for (const stageRaw of requestedStages) {
     callbackUrls: config.callbackUrls,
     logoutUrls: config.logoutUrls,
     cognitoDomainPrefix,
+    localEmulator: app.node.tryGetContext("localEmulator") === "true" || app.node.tryGetContext("localEmulator") === true,
     invoiceEmail: invoiceEmailFrom && invoiceEmailIdentity
       ? { from: invoiceEmailFrom, sesIdentity: invoiceEmailIdentity }
       : undefined,

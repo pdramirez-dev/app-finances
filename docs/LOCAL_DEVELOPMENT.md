@@ -1,5 +1,8 @@
 # Desarrollo local con PostgreSQL y LocalStack
 
+> Para correr el backend completo (Cognito, AppSync, Aurora/Data API, Lambda, SES) sin cuenta de AWS, ver
+> [LOCAL_FLOCI.md](./LOCAL_FLOCI.md).
+
 El entorno local separa explícitamente dos responsabilidades:
 
 - PostgreSQL 16 sustituye Aurora PostgreSQL para ejecutar migraciones y probar el dominio.
