@@ -3,7 +3,7 @@ import {
   listInvoices, getInvoice, getInvoiceByNumber, deleteInvoice, updateInvoiceStatus,
   listClients, getClient, deleteClient, getBankAccount, getAccount,
   putClient, putBankAccount, putAccount,
-  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem, deleteInvoiceLineItem, sectionsByInvoice, lineItemsBySection,
   normalizeMaskedBankValue, decodePageToken, nextPageToken,
 } from "./sql-builders";
@@ -307,4 +307,58 @@ test("updateInvoiceFull ignores a client-supplied accountId", () => {
     weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
   expect(r.params.acc).toBe("ACC_A");
   expect(Object.values(r.params)).not.toContain("ACC_B");
+});
+
+test("invoice rows expose their series", () => {
+  const r = getInvoice("ACC_A", { invoiceId: "INV1" } as any);
+  expect(r.statement).toMatch(/series_id AS "seriesId"/);
+  expect(r.statement).toMatch(/series_code AS "seriesCode"/);
+});
+
+test("getInvoiceByNumber is scoped to a series and defaults to the general numbering", () => {
+  expect(getInvoiceByNumber("ACC_A", { invoiceNumber: 7 } as any).params).toMatchObject({ series: "" });
+  const r = getInvoiceByNumber("ACC_A", { invoiceNumber: 7, seriesCode: "A" } as any);
+  expect(r.statement).toMatch(/series_code\s*=\s*:series/i);
+  expect(r.params).toMatchObject({ num: 7, series: "A", acc: "ACC_A" });
+});
+
+test("createInvoiceFull bumps exactly one counter: the tenant's active series or the general one", () => {
+  const r = createInvoiceFull("ACC_A", { input: { seriesId: "S1", date: "2026-01-01", weekNumber: 1,
+    billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(r.statement).toMatch(/UPDATE invoice_series s SET last_number = s\.last_number \+ 1/i);
+  expect(r.statement).toMatch(/s\.id = CAST\(:seriesId AS uuid\) AND s\.account_id = :acc AND s\.archived_at IS NULL/i);
+  expect(r.statement).toMatch(/INSERT INTO invoice_counters[\s\S]*WHERE CAST\(:seriesId AS uuid\) IS NULL/i);
+  expect(r.statement).toMatch(/series_id, series_code, invoice_number/i);
+  expect(r.params).toMatchObject({ seriesId: "S1" });
+  const general = createInvoiceFull("ACC_A", { input: { date: "2026-01-01", weekNumber: 1,
+    billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(general.params.seriesId).toBeNull();
+});
+
+test("updateInvoiceFull never changes the series", () => {
+  const r = updateInvoiceFull("ACC_A", { invoiceId: "INV1", input: { seriesId: "S2", date: "2026-01-01",
+    weekNumber: 1, billToName: "x", billToAddress: "y", project: "p", grandTotal: 0, sections: [] } } as any);
+  expect(r.statement).not.toMatch(/series_id\s*=/i);
+  expect(r.params).not.toHaveProperty("seriesId");
+});
+
+test("listInvoiceSeries is tenant-scoped and flags the account default", () => {
+  const r = listInvoiceSeries("ACC_A", { accountId: "ACC_B" } as any);
+  expect(r.statement).toMatch(/s\.account_id = :acc/i);
+  expect(r.statement).toMatch(/COALESCE\(a\.default_invoice_series_id = s\.id, false\) AS "isDefault"/i);
+  expect(r.params).toEqual({ acc: "ACC_A" });
+});
+
+test("putInvoiceSeries creates with a start number and only renames, archives or re-defaults on update", () => {
+  const created = putInvoiceSeries("ACC_A", { input: { code: "A", name: "Serie A", startNumber: 100, isDefault: true } } as any);
+  expect(created.statement).toMatch(/INSERT INTO invoice_series \(account_id, code, name, last_number\)/i);
+  expect(created.statement).toMatch(/WHERE CAST\(:seriesId AS uuid\) IS NULL/i);
+  expect(created.statement).toMatch(/UPDATE invoice_series SET name = :name/i);
+  expect(created.statement).not.toMatch(/SET[^;]*\bcode\s*=/i);
+  expect(created.statement).toMatch(/UPDATE accounts a SET default_invoice_series_id/i);
+  expect(created.params).toMatchObject({ acc: "ACC_A", seriesId: null, code: "A", name: "Serie A",
+    lastNumber: 99, isDefault: true, archived: false });
+
+  const updated = putInvoiceSeries("ACC_A", { input: { seriesId: "S1", name: "Renamed", archived: true } } as any);
+  expect(updated.params).toMatchObject({ seriesId: "S1", code: null, lastNumber: 0, isDefault: false, archived: true });
 });

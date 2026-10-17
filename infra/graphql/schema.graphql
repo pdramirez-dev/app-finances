@@ -116,7 +116,8 @@ enum WorkspaceEntityType {
 
 type Query {
   getInvoice(invoiceId: ID!): Invoice
-  getInvoiceByNumber(invoiceNumber: Int!): Invoice
+  getInvoiceByNumber(invoiceNumber: Int!, seriesCode: String): Invoice
+  listInvoiceSeries: [InvoiceSeries!]!
   listInvoices(status: InvoiceStatus, limit: Int, nextToken: String): InvoiceConnection!
   getAccount: Account
   listClients(limit: Int, nextToken: String): ClientConnection!
@@ -145,6 +146,7 @@ type Mutation {
   putInvoice(input: PutInvoiceInput!): Invoice!
   createInvoiceFull(input: CreateInvoiceFullInput!): Invoice!
   updateInvoiceFull(invoiceId: ID!, input: UpdateInvoiceFullInput!): Invoice!
+  putInvoiceSeries(input: PutInvoiceSeriesInput!): InvoiceSeries!
   putInvoiceSection(input: PutInvoiceSectionInput!): InvoiceSection!
   putInvoiceLineItem(input: PutInvoiceLineItemInput!): InvoiceLineItem!
   deleteInvoiceSection(invoiceId: ID!, sectionId: ID!): Boolean!
@@ -233,6 +235,8 @@ type Invoice {
   accountId: ID!
   clientId: ID
   invoiceNumber: Int!
+  seriesId: ID
+  seriesCode: String!
   date: AWSDate!
   dueDate: AWSDate
   weekNumber: Int!
@@ -246,6 +250,19 @@ type Invoice {
   createdAt: AWSDateTime!
   updatedAt: AWSDateTime!
   sections: [InvoiceSection!]!
+}
+
+type InvoiceSeries {
+  seriesId: ID!
+  accountId: ID!
+  code: String!
+  name: String!
+  lastNumber: Int!
+  nextNumber: Int!
+  isDefault: Boolean!
+  archived: Boolean!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
 }
 
 type InvoiceSection {
@@ -519,6 +536,7 @@ input CreateInvoiceFullSectionInput {
 
 input CreateInvoiceFullInput {
   clientId: ID
+  seriesId: ID
   date: AWSDate!
   dueDate: AWSDate
   weekNumber: Int!
@@ -530,6 +548,15 @@ input CreateInvoiceFullInput {
   grandTotal: Float!
   status: InvoiceStatus
   sections: [CreateInvoiceFullSectionInput!]!
+}
+
+input PutInvoiceSeriesInput {
+  seriesId: ID
+  code: String
+  name: String!
+  startNumber: Int
+  isDefault: Boolean
+  archived: Boolean
 }
 
 input UpdateInvoiceFullInput {

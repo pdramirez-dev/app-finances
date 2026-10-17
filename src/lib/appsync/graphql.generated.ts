@@ -33,6 +33,7 @@ export type CreateInvoiceFullInput = {
   notes?: string | null | undefined;
   project: string;
   sections: Array<CreateInvoiceFullSectionInput>;
+  seriesId?: string | number | null | undefined;
   status?: InvoiceStatus | null | undefined;
   weekNumber: number;
 };
@@ -182,6 +183,15 @@ export type PutContactInput = {
   name: string;
   phone?: string | null | undefined;
   role?: string | null | undefined;
+};
+
+export type PutInvoiceSeriesInput = {
+  archived?: boolean | null | undefined;
+  code?: string | null | undefined;
+  isDefault?: boolean | null | undefined;
+  name: string;
+  seriesId?: string | number | null | undefined;
+  startNumber?: number | null | undefined;
 };
 
 export type PutProjectInput = {
@@ -425,28 +435,29 @@ export type ListInvoicesQueryVariables = Exact<{
 }>;
 
 
-export type ListInvoicesQuery = { listInvoices: { nextToken: string | null, items: Array<{ invoiceId: string, invoiceNumber: number, clientId: string | null, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string }> } };
+export type ListInvoicesQuery = { listInvoices: { nextToken: string | null, items: Array<{ invoiceId: string, invoiceNumber: number, clientId: string | null, seriesId: string | null, seriesCode: string, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string }> } };
 
 export type GetInvoiceQueryVariables = Exact<{
   invoiceId: string | number;
 }>;
 
 
-export type GetInvoiceQuery = { getInvoice: { invoiceId: string, invoiceNumber: number, clientId: string | null, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string, sections: Array<{ invoiceId: string, sectionId: string, title: string, position: number, total: number, lineItems: Array<{ sectionId: string, lineItemId: string, description: string, quantity: number, amount: number, position: number }> }> } | null };
+export type GetInvoiceQuery = { getInvoice: { invoiceId: string, invoiceNumber: number, clientId: string | null, seriesId: string | null, seriesCode: string, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string, sections: Array<{ invoiceId: string, sectionId: string, title: string, position: number, total: number, lineItems: Array<{ sectionId: string, lineItemId: string, description: string, quantity: number, amount: number, position: number }> }> } | null };
 
 export type GetInvoiceByNumberQueryVariables = Exact<{
   invoiceNumber: number;
+  seriesCode?: string | null | undefined;
 }>;
 
 
-export type GetInvoiceByNumberQuery = { getInvoiceByNumber: { invoiceId: string, invoiceNumber: number, clientId: string | null, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } | null };
+export type GetInvoiceByNumberQuery = { getInvoiceByNumber: { invoiceId: string, invoiceNumber: number, clientId: string | null, seriesId: string | null, seriesCode: string, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } | null };
 
 export type CreateInvoiceFullMutationVariables = Exact<{
   input: CreateInvoiceFullInput;
 }>;
 
 
-export type CreateInvoiceFullMutation = { createInvoiceFull: { invoiceId: string, invoiceNumber: number, clientId: string | null, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } };
+export type CreateInvoiceFullMutation = { createInvoiceFull: { invoiceId: string, invoiceNumber: number, clientId: string | null, seriesId: string | null, seriesCode: string, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } };
 
 export type UpdateInvoiceFullMutationVariables = Exact<{
   invoiceId: string | number;
@@ -454,7 +465,19 @@ export type UpdateInvoiceFullMutationVariables = Exact<{
 }>;
 
 
-export type UpdateInvoiceFullMutation = { updateInvoiceFull: { invoiceId: string, invoiceNumber: number, clientId: string | null, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } };
+export type UpdateInvoiceFullMutation = { updateInvoiceFull: { invoiceId: string, invoiceNumber: number, clientId: string | null, seriesId: string | null, seriesCode: string, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } };
+
+export type ListInvoiceSeriesQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ListInvoiceSeriesQuery = { listInvoiceSeries: Array<{ seriesId: string, accountId: string, code: string, name: string, lastNumber: number, nextNumber: number, isDefault: boolean, archived: boolean, createdAt: string, updatedAt: string }> };
+
+export type PutInvoiceSeriesMutationVariables = Exact<{
+  input: PutInvoiceSeriesInput;
+}>;
+
+
+export type PutInvoiceSeriesMutation = { putInvoiceSeries: { seriesId: string, accountId: string, code: string, name: string, lastNumber: number, nextNumber: number, isDefault: boolean, archived: boolean, createdAt: string, updatedAt: string } };
 
 export type UpdateInvoiceStatusMutationVariables = Exact<{
   invoiceId: string | number;
@@ -462,7 +485,7 @@ export type UpdateInvoiceStatusMutationVariables = Exact<{
 }>;
 
 
-export type UpdateInvoiceStatusMutation = { updateInvoiceStatus: { invoiceId: string, invoiceNumber: number, clientId: string | null, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } };
+export type UpdateInvoiceStatusMutation = { updateInvoiceStatus: { invoiceId: string, invoiceNumber: number, clientId: string | null, seriesId: string | null, seriesCode: string, date: string, dueDate: string | null, weekNumber: number, billToName: string, billToAddress: string, project: string, currency: string, notes: string | null, grandTotal: number, status: InvoiceStatus, createdAt: string, updatedAt: string } };
 
 export type DeleteInvoiceMutationVariables = Exact<{
   invoiceId: string | number;

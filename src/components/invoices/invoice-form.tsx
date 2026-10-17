@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 
 import { createInvoiceAction, type CreateInvoiceActionState } from "@/actions/invoices";
-import type { InvoiceRecord } from "@/lib/invoice-types";
+import type { InvoiceRecord, InvoiceSeries } from "@/lib/invoice-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { defaultSectionTemplate } from "@/lib/company";
 import type { Client } from "@/lib/appsync/workspace";
-import { formatMoney, toDateInputValue } from "@/lib/invoices";
+import { formatInvoiceNumber, formatMoney, toDateInputValue } from "@/lib/invoices";
 
 type EditableItem = {
   description: string;
@@ -59,13 +60,17 @@ function sectionsFromInvoice(invoice: InvoiceRecord): EditableSection[] {
 
 export function InvoiceForm({
   clients = [],
+  series = [],
   invoice,
   action = createInvoiceAction,
 }: {
   clients?: Client[];
+  series?: InvoiceSeries[];
   invoice?: InvoiceRecord;
   action?: InvoiceFormAction;
 }) {
+  const activeSeries = series.filter((item) => !item.archived);
+  const defaultSeriesId = activeSeries.find((item) => item.isDefault)?.seriesId ?? "";
   const isEditing = Boolean(invoice);
   const [state, formAction, isPending] = useActionState(action, initialState);
   const [defaultDates] = useState(() => {
@@ -204,6 +209,30 @@ export function InvoiceForm({
             </select>
             <p className="text-xs text-slate-500">Vincula la factura al cliente dentro de la cuenta activa.</p>
           </div>
+          {invoice ? (
+            <div className="space-y-2 md:col-span-2">
+              <Label>Numeración</Label>
+              <p className="text-sm text-slate-700">
+                {invoice.seriesCode ? `Serie ${invoice.seriesCode}` : "Numeración general"} · Factura #{formatInvoiceNumber(invoice)}
+              </p>
+              <p className="text-xs text-slate-500">La serie y el número no cambian al editar.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="seriesId">Serie de numeración</Label>
+              <select id="seriesId" name="seriesId" defaultValue={defaultSeriesId} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+                <option value="">Numeración general</option>
+                {activeSeries.map((item) => (
+                  <option key={item.seriesId} value={item.seriesId}>
+                    {item.code} · {item.name} (siguiente {formatInvoiceNumber({ seriesCode: item.code, invoiceNumber: item.nextNumber })})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                Gestiona las series en <Link href="/settings/invoice-series" className="font-medium text-cyan-700 hover:underline">Configuración · Series de facturación</Link>.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="weekNumber">Número de semana</Label>
             <Input id="weekNumber" name="weekNumber" type="number" min={1} max={53} defaultValue={invoice?.weekNumber} required />

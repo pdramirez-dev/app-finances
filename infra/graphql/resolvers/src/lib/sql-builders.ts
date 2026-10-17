@@ -26,7 +26,7 @@ export function normalizeMaskedBankValue(value: unknown, maxVisible = 4): string
 }
 
 const INVOICE_COLS =
-  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  `id AS "invoiceId", account_id AS "accountId", client_id AS "clientId", invoice_number AS "invoiceNumber", series_id AS "seriesId", series_code AS "seriesCode", date, due_date AS "dueDate", week_number AS "weekNumber", bill_to_name AS "billToName", bill_to_address AS "billToAddress", project, currency, notes, grand_total AS "grandTotal", status, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SECTION_COLS =
   `id AS "sectionId", invoice_id AS "invoiceId", title, position, total`;
@@ -60,10 +60,11 @@ export function getInvoice(acc: string, args: { invoiceId: string }): SqlRequest
   };
 }
 
-export function getInvoiceByNumber(acc: string, args: { invoiceNumber: number }): SqlRequest {
+export function getInvoiceByNumber(acc: string, args: { invoiceNumber: number; seriesCode?: string | null }): SqlRequest {
   return {
-    statement: `SELECT ${INVOICE_COLS} FROM invoices WHERE invoice_number = :num AND account_id = :acc`,
-    params: { num: args.invoiceNumber, acc },
+    statement: `SELECT ${INVOICE_COLS} FROM invoices
+      WHERE invoice_number = :num AND series_code = :series AND account_id = :acc`,
+    params: { num: args.invoiceNumber, series: args.seriesCode ?? "", acc },
   };
 }
 
@@ -237,20 +238,28 @@ export function createInvoiceFull(acc: string, args: { input: any }): SqlRequest
         WHERE CAST(:clientId AS uuid) IS NULL OR EXISTS (
           SELECT 1 FROM clients c WHERE c.id = CAST(:clientId AS uuid) AND c.account_id = :acc
         )
-      ), n AS (
+      ), series_bump AS (
+        UPDATE invoice_series s SET last_number = s.last_number + 1, updated_at = now()
+        FROM valid_client
+        WHERE s.id = CAST(:seriesId AS uuid) AND s.account_id = :acc AND s.archived_at IS NULL
+        RETURNING s.id AS series_id, s.code AS series_code, s.last_number AS number
+      ), general_bump AS (
         INSERT INTO invoice_counters (account_id, last_invoice_number)
-        SELECT :acc, 1 FROM valid_client
+        SELECT :acc, 1 FROM valid_client WHERE CAST(:seriesId AS uuid) IS NULL
         ON CONFLICT (account_id) DO UPDATE SET last_invoice_number = invoice_counters.last_invoice_number + 1
-        RETURNING last_invoice_number
+        RETURNING CAST(NULL AS uuid) AS series_id, CAST('' AS text) AS series_code, last_invoice_number AS number
+      ), n AS (
+        SELECT * FROM series_bump UNION ALL SELECT * FROM general_bump
       ), new_invoice AS (
-        INSERT INTO invoices (account_id, client_id, invoice_number, date, due_date, week_number, bill_to_name,
-          bill_to_address, project, currency, notes, grand_total, status)
-        SELECT :acc, valid_client.id, n.last_invoice_number, :date, :dueDate, :week, :billName, :billAddr, :project,
-          :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
+        INSERT INTO invoices (account_id, client_id, series_id, series_code, invoice_number, date, due_date,
+          week_number, bill_to_name, bill_to_address, project, currency, notes, grand_total, status)
+        SELECT :acc, valid_client.id, n.series_id, n.series_code, n.number, :date, :dueDate, :week, :billName,
+          :billAddr, :project, :currency, :notes, :grandTotal, :status FROM n CROSS JOIN valid_client
         RETURNING *
       ), ${INVOICE_SECTIONS_INSERT_CTES("new_invoice")}
       SELECT ${INVOICE_COLS} FROM new_invoice`,
-    params: { acc, clientId: i.clientId ?? null, date: i.date, dueDate: i.dueDate ?? null, week: i.weekNumber,
+    params: { acc, clientId: i.clientId ?? null, seriesId: i.seriesId ?? null, date: i.date,
+              dueDate: i.dueDate ?? null, week: i.weekNumber,
               billName: i.billToName, billAddr: i.billToAddress, project: i.project,
               currency: i.currency ?? "USD", notes: i.notes ?? null,
               grandTotal: i.grandTotal, status: i.status ?? "DRAFT",
@@ -295,6 +304,56 @@ export function updateInvoiceFull(acc: string, args: { invoiceId: string; input:
               billAddr: i.billToAddress, project: i.project, currency: i.currency ?? null,
               notes: i.notes ?? null, grandTotal: i.grandTotal,
               sections: serializeInvoiceSections(i.sections) },
+  };
+}
+
+const INVOICE_SERIES_COLS =
+  `s.id AS "seriesId", s.account_id AS "accountId", s.code, s.name, s.last_number AS "lastNumber", s.last_number + 1 AS "nextNumber", (s.archived_at IS NOT NULL) AS archived, s.created_at AS "createdAt", s.updated_at AS "updatedAt"`;
+
+export function listInvoiceSeries(acc: string, _args: unknown): SqlRequest {
+  return {
+    statement: `SELECT ${INVOICE_SERIES_COLS}, COALESCE(a.default_invoice_series_id = s.id, false) AS "isDefault"
+      FROM invoice_series s LEFT JOIN accounts a ON a.id = s.account_id
+      WHERE s.account_id = :acc
+      ORDER BY s.archived_at IS NOT NULL, s.code`,
+    params: { acc },
+  };
+}
+
+// Creates a series (code and starting number are fixed at creation) or updates
+// its name and archived flag. isDefault is the desired state: true makes it the
+// account default, false clears it only if it currently is the default, and an
+// archived series can never stay the default.
+export function putInvoiceSeries(acc: string, args: { input: any }): SqlRequest {
+  const i = args.input;
+  const seriesId = i.seriesId ?? null;
+  return {
+    statement: `WITH new_series AS (
+        INSERT INTO invoice_series (account_id, code, name, last_number)
+        SELECT :acc, :code, :name, :lastNumber WHERE CAST(:seriesId AS uuid) IS NULL
+        RETURNING *
+      ), updated_series AS (
+        UPDATE invoice_series SET name = :name,
+          archived_at = CASE WHEN :archived THEN COALESCE(archived_at, now()) ELSE NULL END,
+          updated_at = now()
+        WHERE id = CAST(:seriesId AS uuid) AND account_id = :acc
+        RETURNING *
+      ), s AS (
+        SELECT * FROM new_series UNION ALL SELECT * FROM updated_series
+      ), default_update AS (
+        UPDATE accounts a SET default_invoice_series_id = CASE
+            WHEN :isDefault AND s.archived_at IS NULL THEN s.id
+            WHEN a.default_invoice_series_id = s.id THEN NULL
+            ELSE a.default_invoice_series_id
+          END
+        FROM s WHERE a.id = :acc
+        RETURNING a.default_invoice_series_id
+      )
+      SELECT ${INVOICE_SERIES_COLS}, COALESCE(d.default_invoice_series_id = s.id, false) AS "isDefault"
+      FROM s LEFT JOIN default_update d ON true`,
+    params: { acc, seriesId, code: seriesId ? null : i.code, name: i.name,
+              lastNumber: seriesId ? 0 : Math.max((i.startNumber ?? 1) - 1, 0),
+              isDefault: i.isDefault ?? false, archived: i.archived ?? false },
   };
 }
 

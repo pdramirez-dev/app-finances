@@ -147,7 +147,7 @@ test("all CRM mutations are audited after the membership guard and RDS write", (
   }
 });
 
-test("invoice edits and status changes are audited after the membership guard and RDS write", () => {
+test("invoice edits, status changes and series changes are audited after the membership guard and RDS write", () => {
   const t = synth();
   const template = t.toJSON();
   const guardId = Object.keys(template.Resources).find((id) => id.startsWith("RequireMembershipFn"));
@@ -160,7 +160,7 @@ test("invoice edits and status changes are audited after the membership guard an
     };
   }>;
 
-  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull"]) {
+  for (const fieldName of ["updateInvoiceStatus", "updateInvoiceFull", "putInvoiceSeries"]) {
     const matches = resolvers.filter((item) =>
       item.Properties.TypeName === "Mutation" && item.Properties.FieldName === fieldName,
     );

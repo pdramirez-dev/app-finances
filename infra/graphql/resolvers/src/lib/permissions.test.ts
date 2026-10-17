@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { requiresAdminRole } from "./permissions";
 
 test.each([
+  "putInvoiceSeries",
   "deleteContact",
   "deleteOpportunity",
   "deleteProject",

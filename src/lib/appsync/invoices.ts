@@ -7,7 +7,10 @@ import type {
   DeleteInvoiceMutation,
   GetInvoiceByNumberQuery,
   GetInvoiceQuery,
+  ListInvoiceSeriesQuery,
   ListInvoicesQuery,
+  PutInvoiceSeriesInput,
+  PutInvoiceSeriesMutation,
   UpdateInvoiceFullInput,
   UpdateInvoiceFullMutation,
   UpdateInvoiceStatusMutation,
@@ -16,6 +19,7 @@ import type {
   InvoiceLineItemRecord,
   InvoiceRecord,
   InvoiceSectionRecord,
+  InvoiceSeries,
   InvoiceStatus,
 } from "@/lib/invoice-types";
 
@@ -30,6 +34,7 @@ type GraphQLResponse<T> = {
 
 type InvoiceSectionRaw = NonNullable<GetInvoiceQuery["getInvoice"]>["sections"][number];
 type InvoiceLineItemRaw = InvoiceSectionRaw["lineItems"][number];
+type InvoiceSeriesRaw = ListInvoiceSeriesQuery["listInvoiceSeries"][number];
 type InvoiceRaw = ListInvoicesQuery["listInvoices"]["items"][number] & {
   sections?: InvoiceSectionRaw[];
 };
@@ -76,10 +81,10 @@ function createDemoInvoice(
 function initialDemoInvoices(): InvoiceRaw[] {
   const now = new Date().toISOString();
   return [
-    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { clientId: "10000000-0000-4000-8000-000000000001", date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { clientId: "10000000-0000-4000-8000-000000000002", date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { clientId: "10000000-0000-4000-8000-000000000004", date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
-    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { clientId: "10000000-0000-4000-8000-000000000005", date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000048", 1048, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000001", date: "2026-07-08", dueDate: "2026-07-18", weekNumber: 28, billToName: "Northline Logistics", billToAddress: "4100 Tradeport Drive, Orlando, FL", project: "Warehouse #4 retrofit", currency: "USD", notes: "Net 15", grandTotal: 24500, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000047", 1047, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000002", date: "2026-07-02", dueDate: "2026-07-12", weekNumber: 27, billToName: "Greenridge Properties", billToAddress: "1820 Lakeview Avenue, Tampa, FL", project: "Inspección solar Q3", currency: "USD", notes: "Paid via ACH", grandTotal: 18750, status: "PAID" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000046", 1046, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000004", date: "2026-06-12", dueDate: "2026-07-04", weekNumber: 24, billToName: "MetroCare Facilities", billToAddress: "75 Health Park Way, Kissimmee, FL", project: "Facility maintenance", currency: "USD", notes: "Follow-up required", grandTotal: 12800, status: "SENT" }, now),
+    createDemoInvoice("20000000-0000-4000-8000-000000000045", 1045, { seriesId: null, seriesCode: "", clientId: "10000000-0000-4000-8000-000000000005", date: "2026-07-10", dueDate: "2026-08-09", weekNumber: 28, billToName: "BrightSpan Construction", billToAddress: "901 Builder Lane, Lakeland, FL", project: "Electrical labor", currency: "USD", notes: null, grandTotal: 8200, status: "DRAFT" }, now),
   ];
 }
 
@@ -89,6 +94,20 @@ function demoInvoiceStore() {
   };
   demoGlobal.__appNexoDemoInvoices ??= initialDemoInvoices();
   return demoGlobal.__appNexoDemoInvoices;
+}
+
+type DemoInvoiceSeries = InvoiceSeriesRaw;
+
+function demoSeriesState() {
+  const demoGlobal = globalThis as typeof globalThis & {
+    __appNexoDemoInvoiceSeries?: { series: DemoInvoiceSeries[]; defaultId: string | null };
+  };
+  demoGlobal.__appNexoDemoInvoiceSeries ??= { series: [], defaultId: null };
+  return demoGlobal.__appNexoDemoInvoiceSeries;
+}
+
+function demoSeriesView(series: DemoInvoiceSeries): DemoInvoiceSeries {
+  return { ...series, nextNumber: series.lastNumber + 1, isDefault: demoSeriesState().defaultId === series.seriesId };
 }
 
 function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {
@@ -118,6 +137,8 @@ function invoiceFromDemoInput(input: DemoInvoiceInput): InvoiceRaw {
   return {
     invoiceId,
     invoiceNumber,
+    seriesId: null,
+    seriesCode: "",
     clientId: input.clientId ? String(input.clientId) : null,
     date: String(input.date),
     dueDate: input.dueDate ? String(input.dueDate) : null,
@@ -142,6 +163,8 @@ const LIST_INVOICES_QUERY = /* GraphQL */ `
         invoiceId
         invoiceNumber
         clientId
+        seriesId
+        seriesCode
         date
         dueDate
         weekNumber
@@ -166,6 +189,8 @@ const GET_INVOICE_QUERY = /* GraphQL */ `
       invoiceId
       invoiceNumber
       clientId
+      seriesId
+      seriesCode
       date
       dueDate
       weekNumber
@@ -198,11 +223,13 @@ const GET_INVOICE_QUERY = /* GraphQL */ `
 `;
 
 const GET_INVOICE_BY_NUMBER_QUERY = /* GraphQL */ `
-  query GetInvoiceByNumber($invoiceNumber: Int!) {
-    getInvoiceByNumber(invoiceNumber: $invoiceNumber) {
+  query GetInvoiceByNumber($invoiceNumber: Int!, $seriesCode: String) {
+    getInvoiceByNumber(invoiceNumber: $invoiceNumber, seriesCode: $seriesCode) {
       invoiceId
       invoiceNumber
       clientId
+      seriesId
+      seriesCode
       date
       dueDate
       weekNumber
@@ -225,6 +252,8 @@ const CREATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
       invoiceId
       invoiceNumber
       clientId
+      seriesId
+      seriesCode
       date
       dueDate
       weekNumber
@@ -247,6 +276,8 @@ const UPDATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
       invoiceId
       invoiceNumber
       clientId
+      seriesId
+      seriesCode
       date
       dueDate
       weekNumber
@@ -263,12 +294,48 @@ const UPDATE_INVOICE_FULL_MUTATION = /* GraphQL */ `
   }
 `;
 
+const LIST_INVOICE_SERIES_QUERY = /* GraphQL */ `
+  query ListInvoiceSeries {
+    listInvoiceSeries {
+      seriesId
+      accountId
+      code
+      name
+      lastNumber
+      nextNumber
+      isDefault
+      archived
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+const PUT_INVOICE_SERIES_MUTATION = /* GraphQL */ `
+  mutation PutInvoiceSeries($input: PutInvoiceSeriesInput!) {
+    putInvoiceSeries(input: $input) {
+      seriesId
+      accountId
+      code
+      name
+      lastNumber
+      nextNumber
+      isDefault
+      archived
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
 const UPDATE_INVOICE_STATUS_MUTATION = /* GraphQL */ `
   mutation UpdateInvoiceStatus($invoiceId: ID!, $status: InvoiceStatus!) {
     updateInvoiceStatus(invoiceId: $invoiceId, status: $status) {
       invoiceId
       invoiceNumber
       clientId
+      seriesId
+      seriesCode
       date
       dueDate
       weekNumber
@@ -322,6 +389,8 @@ function normalizeInvoice(invoice: InvoiceRaw): InvoiceRecord {
   return {
     invoiceId: invoice.invoiceId,
     invoiceNumber: invoice.invoiceNumber,
+    seriesId: invoice.seriesId ?? null,
+    seriesCode: invoice.seriesCode ?? "",
     clientId: invoice.clientId ?? null,
     date: parseDate(invoice.date),
     dueDate: invoice.dueDate ? parseDate(invoice.dueDate) : null,
@@ -351,15 +420,43 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
       return { listInvoices: { items, nextToken: null } } as T;
     }
     if (query.includes("GetInvoiceByNumber")) {
-      const invoice = demoInvoiceStore().find((item) => item.invoiceNumber === Number(variables?.invoiceNumber));
+      const invoice = demoInvoiceStore().find((item) => item.invoiceNumber === Number(variables?.invoiceNumber)
+        && item.seriesCode === String(variables?.seriesCode ?? ""));
       return { getInvoiceByNumber: invoice ?? null } as T;
     }
     if (query.includes("GetInvoice(")) {
       const invoice = demoInvoiceStore().find((item) => item.invoiceId === variables?.invoiceId);
       return { getInvoice: invoice ?? null } as T;
     }
+    if (query.includes("ListInvoiceSeries")) {
+      return { listInvoiceSeries: demoSeriesState().series.map(demoSeriesView) } as T;
+    }
+    if (query.includes("PutInvoiceSeries")) {
+      const state = demoSeriesState();
+      let series = state.series.find((item) => item.seriesId === input.seriesId);
+      if (input.seriesId && !series) throw new Error("No se encontró la serie demo");
+      if (!series) {
+        if (state.series.some((item) => item.code === input.code)) throw new Error("Ya existe una serie con ese código");
+        series = { accountId, seriesId: crypto.randomUUID(), code: String(input.code), name: String(input.name),
+          lastNumber: Math.max(Number(input.startNumber ?? 1) - 1, 0), nextNumber: 0, isDefault: false,
+          archived: false, createdAt: now, updatedAt: now };
+        state.series.push(series);
+      }
+      series.name = String(input.name);
+      series.archived = Boolean(input.archived);
+      series.updatedAt = now;
+      if (input.isDefault && !series.archived) state.defaultId = series.seriesId;
+      else if (state.defaultId === series.seriesId) state.defaultId = null;
+      return { putInvoiceSeries: demoSeriesView(series) } as T;
+    }
     if (query.includes("CreateInvoiceFull")) {
       const invoice = invoiceFromDemoInput(input);
+      if (input.seriesId) {
+        const series = demoSeriesState().series.find((item) => item.seriesId === input.seriesId && !item.archived);
+        if (!series) throw new Error("La serie no existe o está archivada");
+        series.lastNumber += 1;
+        Object.assign(invoice, { seriesId: series.seriesId, seriesCode: series.code, invoiceNumber: series.lastNumber });
+      }
       demoInvoiceStore().unshift(invoice);
       return { createInvoiceFull: invoice } as T;
     }
@@ -371,6 +468,7 @@ export async function appsyncRequest<T>(query: string, variables?: Record<string
       const rebuilt = invoiceFromDemoInput(input);
       const sections = (rebuilt.sections ?? []).map((section) => ({ ...section, invoiceId: current.invoiceId }));
       const invoice = { ...rebuilt, invoiceId: current.invoiceId, invoiceNumber: current.invoiceNumber,
+        seriesId: current.seriesId, seriesCode: current.seriesCode,
         status: current.status, createdAt: current.createdAt, sections };
       invoices[index] = invoice;
       return { updateInvoiceFull: invoice } as T;
@@ -466,7 +564,8 @@ export async function listInvoices(options?: {
     cursor = data.listInvoices.nextToken ?? null;
   } while (cursor);
 
-  invoices.sort((a, b) => b.invoiceNumber - a.invoiceNumber);
+  // Numbers repeat across series, so order by creation time.
+  invoices.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return invoices;
 }
 
@@ -475,9 +574,13 @@ export async function getInvoiceById(invoiceId: string): Promise<InvoiceRecord |
   return data.getInvoice ? normalizeInvoice(data.getInvoice) : null;
 }
 
-export async function getInvoiceByNumber(invoiceNumber: number): Promise<InvoiceRecord | null> {
+export async function getInvoiceByNumber(
+  invoiceNumber: number,
+  seriesCode = "",
+): Promise<InvoiceRecord | null> {
   const data = await appsyncRequest<GetInvoiceByNumberQuery>(GET_INVOICE_BY_NUMBER_QUERY, {
     invoiceNumber,
+    seriesCode,
   });
   return data.getInvoiceByNumber ? normalizeInvoice(data.getInvoiceByNumber) : null;
 }
@@ -498,6 +601,28 @@ export async function updateInvoiceFull(
     input,
   });
   return normalizeInvoice(data.updateInvoiceFull);
+}
+
+function normalizeSeries(series: InvoiceSeriesRaw): InvoiceSeries {
+  return {
+    seriesId: series.seriesId,
+    code: series.code,
+    name: series.name,
+    lastNumber: series.lastNumber,
+    nextNumber: series.nextNumber,
+    isDefault: series.isDefault,
+    archived: series.archived,
+  };
+}
+
+export async function listInvoiceSeries(): Promise<InvoiceSeries[]> {
+  const data = await appsyncRequest<ListInvoiceSeriesQuery>(LIST_INVOICE_SERIES_QUERY);
+  return data.listInvoiceSeries.map(normalizeSeries);
+}
+
+export async function putInvoiceSeries(input: PutInvoiceSeriesInput): Promise<InvoiceSeries> {
+  const data = await appsyncRequest<PutInvoiceSeriesMutation>(PUT_INVOICE_SERIES_MUTATION, { input });
+  return normalizeSeries(data.putInvoiceSeries);
 }
 
 export async function updateInvoiceStatus(

@@ -323,6 +323,7 @@ export class AppNexoBackendStack extends cdk.Stack {
     securedRdsResolver("QueryGetInvoice", "Query", "getInvoice", "query-get-invoice");
     securedRdsResolver("QueryGetInvoiceByNumber", "Query", "getInvoiceByNumber", "query-get-invoice-by-number");
     securedRdsResolver("QueryListInvoices", "Query", "listInvoices", "query-list-invoices");
+    securedRdsResolver("QueryListInvoiceSeries", "Query", "listInvoiceSeries", "query-list-invoice-series");
     securedRdsResolver("QueryGetAccount", "Query", "getAccount", "query-get-account");
     securedRdsResolver("QueryListClients", "Query", "listClients", "query-list-clients");
     securedRdsResolver("QueryGetClient", "Query", "getClient", "query-get-client");
@@ -484,6 +485,22 @@ export class AppNexoBackendStack extends cdk.Stack {
       runtime: jsRuntime,
       code: resolverFromFile("dist/pipeline-update-invoice-full.js"),
       pipelineConfig: [membershipGuardFn, updateInvoiceFullRdsFn, auditWriteFn],
+    });
+
+    const putInvoiceSeriesRdsFn = new appsync.AppsyncFunction(this, "PutInvoiceSeriesRdsFn", {
+      api: graphqlApi,
+      dataSource: rdsDs,
+      name: "PutInvoiceSeriesRdsFn",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/mutation-put-invoice-series.js"),
+    });
+
+    graphqlApi.createResolver("MutationPutInvoiceSeriesResolver", {
+      typeName: "Mutation",
+      fieldName: "putInvoiceSeries",
+      runtime: jsRuntime,
+      code: resolverFromFile("dist/pipeline-put-invoice-series.js"),
+      pipelineConfig: [membershipGuardFn, putInvoiceSeriesRdsFn, auditWriteFn],
     });
 
     const requestInvoicePdfFn = new appsync.AppsyncFunction(this, "RequestInvoicePdfFn", {

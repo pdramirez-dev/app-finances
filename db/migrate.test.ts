@@ -40,6 +40,7 @@ const crmTables = [
   "payments",
   "bank_movements",
   "payment_reconciliations",
+  "invoice_series",
 ];
 
 beforeAll(async () => {
@@ -80,6 +81,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
     "0002_invoice_client_tenant_fk",
     "0003_crm",
     "0004_crm_financial_invariants",
+    "0005_invoice_series",
   ]);
 
   const knexHistory = await client.query(
@@ -90,6 +92,7 @@ test.skipIf(!dbAvailable)("lets Knex track every SQL migration without losing le
     "0002_invoice_client_tenant_fk.sql",
     "0003_crm.sql",
     "0004_crm_financial_invariants.sql",
+    "0005_invoice_series.sql",
   ]);
 });
 
@@ -216,4 +219,14 @@ test.skipIf(!dbAvailable)("invoice clients are constrained to the same account",
 
 test.skipIf(!dbAvailable)("running migrations twice is idempotent", async () => {
   await expect(runMigrations(DATABASE_URL)).resolves.not.toThrow();
+});
+
+test.skipIf(!dbAvailable)("numbers invoices per series instead of per account", async () => {
+  const { rows } = await client.query(
+    `SELECT conname FROM pg_constraint
+     WHERE conrelid = 'invoices'::regclass AND contype = 'u'`,
+  );
+  const names = rows.map((row) => row.conname);
+  expect(names).toContain("invoices_account_series_number_unique");
+  expect(names.filter((name) => /invoice_number_key$/.test(name))).toEqual([]);
 });

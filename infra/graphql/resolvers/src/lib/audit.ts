@@ -15,6 +15,7 @@ export type AuditEntityType =
   | "CLIENT"
   | "BANK_ACCOUNT"
   | "INVOICE"
+  | "INVOICE_SERIES"
   | "CONTACT"
   | "OPPORTUNITY"
   | "PROJECT"

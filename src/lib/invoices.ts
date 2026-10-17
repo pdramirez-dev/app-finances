@@ -39,3 +39,11 @@ export function formatMoneyParts(amount: number, currency = "USD") {
 export function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
 }
+
+// Mirrors INVOICE_NUMBER_LABEL in the resolvers: the general numbering stays a
+// plain number, series numbers are "CODE-0001" (padded, never truncated).
+export function formatInvoiceNumber(invoice: { seriesCode?: string | null; invoiceNumber: number }) {
+  return invoice.seriesCode
+    ? `${invoice.seriesCode}-${String(invoice.invoiceNumber).padStart(4, "0")}`
+    : String(invoice.invoiceNumber);
+}

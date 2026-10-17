@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { InvoiceRecord, InvoiceStatus } from "@/lib/invoice-types";
-import { formatMoney } from "@/lib/invoices";
+import { formatInvoiceNumber, formatMoney } from "@/lib/invoices";
 
 const statusClassMap: Record<InvoiceStatus, string> = {
   DRAFT: "bg-amber-100 text-amber-900 hover:bg-amber-100",
@@ -43,7 +43,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
       const matchesQuery =
         normalizedQuery.length === 0
           ? true
-          : String(invoice.invoiceNumber).includes(normalizedQuery) ||
+          : formatInvoiceNumber(invoice).toLowerCase().includes(normalizedQuery) ||
             invoice.billToName.toLowerCase().includes(normalizedQuery) ||
             invoice.project.toLowerCase().includes(normalizedQuery);
 
@@ -138,7 +138,7 @@ export function InvoiceListTable({ invoices }: InvoiceListTableProps) {
                   className="cursor-pointer border-slate-200 hover:bg-slate-50 data-[state=selected]:bg-cyan-50/60"
                   onClick={() => setSelectedInvoiceId(invoice.invoiceId)}
                 >
-                  <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                  <TableCell className="font-medium">{formatInvoiceNumber(invoice)}</TableCell>
                   <TableCell>{format(new Date(invoice.date), "MM/dd/yyyy")}</TableCell>
                   <TableCell>{invoice.billToName}</TableCell>
                   <TableCell>

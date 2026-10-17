@@ -6,7 +6,13 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { CreateInvoiceFullInput } from "@/lib/appsync/graphql.generated";
-import { createInvoiceFull, deleteInvoice, updateInvoiceFull, updateInvoiceStatus } from "@/lib/appsync/invoices";
+import {
+  createInvoiceFull,
+  deleteInvoice,
+  putInvoiceSeries,
+  updateInvoiceFull,
+  updateInvoiceStatus,
+} from "@/lib/appsync/invoices";
 import { INVOICE_STATUSES } from "@/lib/invoice-types";
 import { calculateGrandTotal, calculateSectionTotal } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
@@ -100,7 +106,23 @@ export async function createInvoiceAction(
     return { error: parsed.error };
   }
 
-  const createdInvoice = await createInvoiceFull({ ...parsed.input, status: "DRAFT" });
+  const seriesId = z.union([z.literal(""), z.string().uuid()]).safeParse(formData.get("seriesId") ?? "");
+
+  if (!seriesId.success) {
+    return { error: "Selecciona una serie válida" };
+  }
+
+  let createdInvoice: Awaited<ReturnType<typeof createInvoiceFull>>;
+
+  try {
+    createdInvoice = await createInvoiceFull({
+      ...parsed.input,
+      seriesId: seriesId.data || undefined,
+      status: "DRAFT",
+    });
+  } catch {
+    return { error: "No se pudo crear la factura. Verifica que la serie siga activa e inténtalo de nuevo." };
+  }
 
   revalidatePath("/invoices");
   redirect(`/invoices/${createdInvoice.invoiceId}`);
@@ -169,4 +191,72 @@ export async function deleteInvoiceAction(formData: FormData) {
 
   revalidatePath("/invoices");
   redirect("/invoices");
+}
+
+export type InvoiceSeriesFormState = {
+  error?: string;
+  success?: string;
+};
+
+const checkbox = z.union([z.literal("on"), z.literal("")]).optional().transform((value) => value === "on");
+
+const invoiceSeriesSchema = z.object({
+  seriesId: z.union([z.literal(""), z.string().uuid()]).optional().transform((value) => value || undefined),
+  code: z.string().trim().toUpperCase().optional(),
+  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres").max(80, "El nombre es demasiado largo"),
+  startNumber: z.union([z.literal(""), z.coerce.number().int("El número inicial debe ser entero")
+    .min(1, "El número inicial debe ser 1 o mayor").max(99_999_999, "El número inicial es demasiado grande")])
+    .optional()
+    .transform((value) => (value === "" || value === undefined ? 1 : value)),
+  isDefault: checkbox,
+  archived: checkbox,
+}).superRefine((value, context) => {
+  if (!value.seriesId && !/^[A-Z0-9][A-Z0-9-]{0,11}$/.test(value.code ?? "")) {
+    context.addIssue({
+      code: "custom",
+      path: ["code"],
+      message: "El código debe tener de 1 a 12 caracteres: letras, números o guiones, empezando por letra o número",
+    });
+  }
+});
+
+function invoiceSeriesErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/invoice_series_account_code_unique|ya existe/i.test(message)) return "Ya existe una serie con ese código";
+  if (/unauthorized|not authorized/i.test(message)) return "Solo los administradores pueden gestionar las series";
+  return "No se pudo guardar la serie";
+}
+
+export async function saveInvoiceSeriesAction(
+  _previousState: InvoiceSeriesFormState,
+  formData: FormData,
+): Promise<InvoiceSeriesFormState> {
+  await requireAuth();
+
+  const result = invoiceSeriesSchema.safeParse({
+    seriesId: formData.get("seriesId") ?? "",
+    code: formData.get("code") ?? undefined,
+    name: formData.get("name"),
+    startNumber: formData.get("startNumber") ?? "",
+    isDefault: formData.get("isDefault") ?? "",
+    archived: formData.get("archived") ?? "",
+  });
+
+  if (!result.success) {
+    return { error: getFirstErrorMessage(result.error) };
+  }
+
+  const { seriesId, code, name, startNumber, isDefault, archived } = result.data;
+
+  try {
+    await putInvoiceSeries(seriesId
+      ? { seriesId, name, isDefault, archived }
+      : { code, name, startNumber, isDefault });
+  } catch (error) {
+    return { error: invoiceSeriesErrorMessage(error) };
+  }
+
+  revalidatePath("/settings/invoice-series");
+  revalidatePath("/invoices/new");
+  return { success: seriesId ? "Serie actualizada" : "Serie creada" };
 }

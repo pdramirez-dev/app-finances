@@ -3,7 +3,7 @@ import { Fragment } from "react";
 
 import { companyProfile } from "@/lib/company";
 import type { InvoiceRecord, InvoiceSectionRecord } from "@/lib/invoice-types";
-import { formatMoney, formatMoneyParts } from "@/lib/invoices";
+import { formatInvoiceNumber, formatMoney, formatMoneyParts } from "@/lib/invoices";
 
 type InvoicePreviewVariant = "default" | "template361";
 
@@ -68,7 +68,7 @@ function DefaultInvoicePreview({ invoice }: { invoice: InvoiceRecord }) {
 
         <div className="space-y-4 text-left md:text-right">
           <div>
-            <p className="font-semibold">Invoice Number: {invoice.invoiceNumber}</p>
+            <p className="font-semibold">Invoice Number: {formatInvoiceNumber(invoice)}</p>
             <p>Date: {format(invoice.date, "MM/dd/yyyy")}</p>
             <p>Week Number: {invoice.weekNumber}</p>
             <p>Project: {invoice.project}</p>
@@ -172,7 +172,7 @@ function Template361InvoicePreview({ invoice }: { invoice: InvoiceRecord }) {
           </div>
 
           <div className="mt-4 space-y-[2px] text-[11px] font-bold leading-none">
-            <p>Invoice Number: {invoice.invoiceNumber}</p>
+            <p>Invoice Number: {formatInvoiceNumber(invoice)}</p>
             <p>Date:{format(invoice.date, "MM/dd/yyyy")}</p>
             <p>Week Number: {invoice.weekNumber}</p>
           </div>

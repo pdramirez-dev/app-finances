@@ -3,7 +3,7 @@ import { Client } from "pg";
 import { runMigrations } from "../../db/migrate";
 import {
   listClients, getClient, getInvoice,
-  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, putInvoiceSection, deleteInvoiceSection,
+  putInvoiceCreate, createInvoiceFull, updateInvoiceFull, listInvoiceSeries, putInvoiceSeries, putInvoiceSection, deleteInvoiceSection,
   putInvoiceLineItem,
 } from "../graphql/resolvers/src/lib/sql-builders";
 
@@ -38,7 +38,7 @@ beforeAll(async () => {
   await runMigrations(URL);
   db = new Client({ connectionString: URL });
   await db.connect();
-  await db.query("DELETE FROM payments; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
+  await db.query("DELETE FROM payments; DELETE FROM invoice_line_items; DELETE FROM invoice_sections; DELETE FROM invoices; UPDATE accounts SET default_invoice_series_id = NULL; DELETE FROM invoice_series; DELETE FROM invoice_counters; DELETE FROM clients; DELETE FROM accounts;");
   await db.query("INSERT INTO accounts (id, type, display_name) VALUES ('11111111-1111-1111-1111-111111111111','COMPANY','A'),('22222222-2222-2222-2222-222222222222','COMPANY','B')");
   await db.query("INSERT INTO clients (id, account_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','Cliente A'),('bbbbbbbb-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','Cliente B')");
   await db.query(`INSERT INTO invoices (id, account_id, client_id, invoice_number, date, week_number, bill_to_name, bill_to_address, project, grand_total) VALUES ('cccccccc-0000-0000-0000-000000000001','22222222-2222-2222-2222-222222222222','bbbbbbbb-0000-0000-0000-000000000001',1,'2024-01-01',1,'Cliente B','123 B Street','Project B',1000.00)`);
@@ -268,4 +268,79 @@ dbTest("updateInvoiceFull cannot lower the total below registered non-voided pay
   expect(await edit(10)).toHaveLength(0);
   expect(await sectionLayout(created.invoiceId)).toEqual([["Old", "Old item", 0]]);
   expect(await edit(15)).toHaveLength(1);
+});
+
+const seriesInvoiceInput = (seriesId: string | null, clientId: string | null = null) => ({ input: {
+  seriesId, clientId, date: "2026-04-01", weekNumber: 14, billToName: "Serie", billToAddress: "Addr", project: "P",
+  grandTotal: 10,
+  sections: [{ title: "S", total: 10, lineItems: [{ description: "d", quantity: 1, amount: 10 }] }],
+} } as any);
+
+const counterState = async () => (await db.query(
+  `SELECT (SELECT count(*)::int FROM invoices) AS inv,
+          (SELECT COALESCE(max(last_invoice_number), 0) FROM invoice_counters WHERE account_id = $1) AS general,
+          (SELECT COALESCE(json_object_agg(code, last_number), '{}'::json) FROM invoice_series) AS series`,
+  [ACC_A],
+)).rows[0];
+
+dbTest("putInvoiceSeries creates a series with a start number and makes it the account default", async () => {
+  const [series] = await run(putInvoiceSeries(ACC_A, { input: { code: "SA", name: "Serie A", startNumber: 100, isDefault: true } }));
+  expect(series).toMatchObject({ code: "SA", name: "Serie A", lastNumber: 99, nextNumber: 100, isDefault: true, archived: false });
+
+  const listedByB = await run(listInvoiceSeries(ACC_B, {}));
+  expect(listedByB.map((row) => row.code)).not.toContain("SA");
+});
+
+dbTest("series numbering is independent from the general numbering and other series", async () => {
+  const [a] = await run(putInvoiceSeries(ACC_A, { input: { code: "NA", name: "Numeración A", startNumber: 1 } }));
+  const [b] = await run(putInvoiceSeries(ACC_A, { input: { code: "NB", name: "Numeración B", startNumber: 50 } }));
+  const generalBefore = (await counterState()).general;
+
+  const first = (await run(createInvoiceFull(ACC_A, seriesInvoiceInput(a.seriesId))))[0];
+  const second = (await run(createInvoiceFull(ACC_A, seriesInvoiceInput(a.seriesId))))[0];
+  const other = (await run(createInvoiceFull(ACC_A, seriesInvoiceInput(b.seriesId))))[0];
+  const general = (await run(createInvoiceFull(ACC_A, seriesInvoiceInput(null))))[0];
+
+  expect([first.seriesCode, first.invoiceNumber, first.seriesId]).toEqual(["NA", 1, a.seriesId]);
+  expect([second.seriesCode, second.invoiceNumber]).toEqual(["NA", 2]);
+  expect([other.seriesCode, other.invoiceNumber]).toEqual(["NB", 50]);
+  expect([general.seriesCode, general.seriesId, general.invoiceNumber]).toEqual(["", null, generalBefore + 1]);
+});
+
+dbTest("createInvoiceFull with a foreign or archived series inserts nothing and moves no counter", async () => {
+  const [foreign] = await run(putInvoiceSeries(ACC_B, { input: { code: "FB", name: "Ajena", startNumber: 1 } }));
+  const [archived] = await run(putInvoiceSeries(ACC_A, { input: { code: "AR", name: "Archivada", startNumber: 1 } }));
+  await run(putInvoiceSeries(ACC_A, { input: { seriesId: archived.seriesId, name: "Archivada", archived: true } }));
+
+  const before = await counterState();
+  expect(await run(createInvoiceFull(ACC_A, seriesInvoiceInput(foreign.seriesId)))).toHaveLength(0);
+  expect(await run(createInvoiceFull(ACC_A, seriesInvoiceInput(archived.seriesId)))).toHaveLength(0);
+  // A valid series with a foreign client must not move the series counter either.
+  const [own] = await run(putInvoiceSeries(ACC_A, { input: { code: "OW", name: "Propia", startNumber: 1 } }));
+  const beforeOwn = await counterState();
+  expect(await run(createInvoiceFull(ACC_A, seriesInvoiceInput(own.seriesId, "bbbbbbbb-0000-0000-0000-000000000001")))).toHaveLength(0);
+  expect(await counterState()).toEqual(beforeOwn);
+  expect({ ...(await counterState()), series: undefined }).toEqual({ ...before, series: undefined });
+});
+
+dbTest("switching or archiving the default series keeps at most one default", async () => {
+  const [first] = await run(putInvoiceSeries(ACC_A, { input: { code: "D1", name: "Uno", startNumber: 1, isDefault: true } }));
+  const [second] = await run(putInvoiceSeries(ACC_A, { input: { code: "D2", name: "Dos", startNumber: 1, isDefault: true } }));
+  expect(second.isDefault).toBe(true);
+  const defaults = () => run(listInvoiceSeries(ACC_A, {})).then((rows) => rows.filter((row) => row.isDefault).map((row) => row.code));
+  expect(await defaults()).toEqual(["D2"]);
+
+  const [archived] = await run(putInvoiceSeries(ACC_A, { input: { seriesId: second.seriesId, name: "Dos", isDefault: true, archived: true } }));
+  expect(archived).toMatchObject({ archived: true, isDefault: false });
+  expect(await defaults()).toEqual([]);
+
+  await run(putInvoiceSeries(ACC_A, { input: { seriesId: first.seriesId, name: "Uno", isDefault: true } }));
+  expect(await defaults()).toEqual(["D1"]);
+});
+
+dbTest("putInvoiceSeries cannot update another account's series", async () => {
+  const [foreign] = await run(putInvoiceSeries(ACC_B, { input: { code: "XB", name: "De B", startNumber: 1 } }));
+  expect(await run(putInvoiceSeries(ACC_A, { input: { seriesId: foreign.seriesId, name: "Hijacked", isDefault: true } }))).toHaveLength(0);
+  const still = await db.query("SELECT name FROM invoice_series WHERE id = $1", [foreign.seriesId]);
+  expect(still.rows[0].name).toBe("De B");
 });

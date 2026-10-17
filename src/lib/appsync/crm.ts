@@ -1,6 +1,8 @@
 import "server-only";
 
 import { appsyncRequest, listInvoices } from "@/lib/appsync/invoices";
+import type { InvoiceRecord } from "@/lib/invoice-types";
+import { formatInvoiceNumber } from "@/lib/invoices";
 import { listClients } from "@/lib/appsync/workspace";
 
 export type ContactKind = "Cliente" | "Lead" | "Partner";
@@ -593,7 +595,7 @@ export async function listPayments() {
     return invoice ? {
       ...payment,
       client: invoice.billToName,
-      invoice: `INV-${invoice.date.getFullYear()}-${String(invoice.invoiceNumber).padStart(4, "0")}`,
+      invoice: paymentInvoiceLabel(invoice),
       issued: displayDate(invoice.date.toISOString().slice(0, 10)),
       due: invoice.dueDate ? displayDate(invoice.dueDate.toISOString().slice(0, 10)) : "—",
       initials: initials(invoice.billToName),
@@ -716,13 +718,31 @@ export async function putCalendarEvent(input: PutCalendarEventInput) {
   return { ...normalizeCalendarEvent(data.putCalendarEvent), company: input.company };
 }
 
+// General-numbering invoices keep their historical "INV-YYYY-NNNN" label;
+// series invoices use their series number so labels stay unique.
+function paymentInvoiceLabel(invoice: InvoiceRecord) {
+  return invoice.seriesCode
+    ? formatInvoiceNumber(invoice)
+    : `INV-${invoice.date.getFullYear()}-${String(invoice.invoiceNumber).padStart(4, "0")}`;
+}
+
+function findInvoiceForPayment(invoices: InvoiceRecord[], reference: string) {
+  const normalized = reference.trim().toUpperCase();
+  const exact = invoices.find((item) => item.invoiceId === reference.trim()
+    || formatInvoiceNumber(item).toUpperCase() === normalized
+    || paymentInvoiceLabel(item).toUpperCase() === normalized);
+  if (exact) return exact;
+  // A bare or legacy number can only refer to the general numbering.
+  const invoiceNumber = Number(normalized.match(/(\d+)$/)?.[1]);
+  return invoices.find((item) => !item.seriesCode && item.invoiceNumber === invoiceNumber);
+}
+
 const paymentMethodInput: Record<PaymentMethod, string> = { Transferencia: "BANK_TRANSFER", Tarjeta: "CARD", ACH: "ACH", Cheque: "CHECK" };
 
 export async function registerPayment(input: RegisterPaymentInput) {
   if (isDevDemo()) return normalizePayment({ paymentId: crypto.randomUUID(), ...input, method: paymentMethodInput[input.method], status: "UNRECONCILED", issued: new Date().toISOString().slice(0, 10), due: new Date().toISOString().slice(0, 10), paidAt: new Date().toISOString().slice(0, 10) });
   const invoices = await listInvoices();
-  const invoiceNumber = Number(input.invoice.match(/(\d+)$/)?.[1]);
-  const invoice = invoices.find((item) => item.invoiceNumber === invoiceNumber || item.invoiceId === input.invoice);
+  const invoice = findInvoiceForPayment(invoices, input.invoice);
   if (!invoice) throw new Error("Selecciona una factura existente para registrar el pago");
   const data = await appsyncRequest<{ registerPayment: Raw }>(REGISTER_PAYMENT, { input: {
     invoiceId: invoice.invoiceId,

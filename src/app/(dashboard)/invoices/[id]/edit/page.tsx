@@ -7,6 +7,7 @@ import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { Button } from "@/components/ui/button";
 import { getInvoiceById } from "@/lib/appsync/invoices";
 import { listClients } from "@/lib/appsync/workspace";
+import { formatInvoiceNumber } from "@/lib/invoices";
 import { requireAuth } from "@/lib/require-auth";
 
 export default async function EditInvoicePage({
@@ -36,7 +37,7 @@ export default async function EditInvoicePage({
             <FilePenLine className="size-4" />
             Finanzas · Editar factura
           </p>
-          <h1 className="brand-heading mt-2 text-3xl text-slate-950">Editar factura #{invoice.invoiceNumber}</h1>
+          <h1 className="brand-heading mt-2 text-3xl text-slate-950">Editar factura #{formatInvoiceNumber(invoice)}</h1>
           <p className="mt-1 text-sm text-slate-500">
             Ajusta los datos y conceptos. El número y el estado de la factura no cambian.
           </p>
